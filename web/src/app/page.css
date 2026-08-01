@@ -241,6 +241,83 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ----------------------------------------------------------- profile update -- */
+
+.profile-update {
+  margin-bottom: 20px;
+}
+
+.profile-update-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.profile-update-toggle:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.profile-update-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.profile-update-field {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-control);
+  /* 16px keeps iOS from zooming the viewport when the field takes focus. */
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--ink);
+  transition: border-color 120ms ease;
+}
+
+.profile-update-field::placeholder {
+  color: var(--muted);
+}
+
+.profile-update-field:hover {
+  border-color: color-mix(in srgb, var(--edge) 55%, var(--muted));
+}
+
+.profile-update-field:disabled {
+  color: var(--muted);
+  opacity: 1;
+  -webkit-text-fill-color: var(--muted);
+}
+
+.profile-update-success {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@media (min-width: 481px) {
+  .profile-update-row {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .profile-update-field {
+    flex: 1 1 auto;
+    font-size: 15px;
+  }
+}
+
 /* -------------------------------------------------------------- tailor -- */
 
 .composer-field {

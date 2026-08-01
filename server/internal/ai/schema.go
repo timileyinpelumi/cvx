@@ -135,6 +135,70 @@ var tailoredSchema = map[string]any{
 	"additionalProperties": false,
 }
 
+// bulletDraftSchema mirrors model.BulletDraft (a bullet with no id), shared
+// by both newItems' bullets and bulletAdditions' bullets below.
+var bulletDraftSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"text": map[string]any{"type": "string"},
+		"skills": map[string]any{
+			"type":  "array",
+			"items": map[string]any{"type": "string"},
+		},
+	},
+	"required":             []string{"text", "skills"},
+	"additionalProperties": false,
+}
+
+// profileAdditionsSchema mirrors model.ProfileAdditions exactly (camelCase
+// keys), without any id fields — MergeAdditions assigns those deterministically
+// after unmarshaling, same discipline as profileSchema.
+var profileAdditionsSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"newSkills": map[string]any{
+			"type":  "array",
+			"items": map[string]any{"type": "string"},
+		},
+		"newItems": map[string]any{
+			"type": "array",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"kind":         map[string]any{"type": "string"},
+					"title":        map[string]any{"type": "string"},
+					"organization": map[string]any{"type": "string"},
+					"startDate":    map[string]any{"type": "string"},
+					"endDate":      map[string]any{"type": "string"},
+					"bullets": map[string]any{
+						"type":  "array",
+						"items": bulletDraftSchema,
+					},
+				},
+				"required":             []string{"kind", "title", "organization", "startDate", "endDate", "bullets"},
+				"additionalProperties": false,
+			},
+		},
+		"bulletAdditions": map[string]any{
+			"type": "array",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"itemId": map[string]any{"type": "string"},
+					"bullets": map[string]any{
+						"type":  "array",
+						"items": bulletDraftSchema,
+					},
+				},
+				"required":             []string{"itemId", "bullets"},
+				"additionalProperties": false,
+			},
+		},
+	},
+	"required":             []string{"newSkills", "newItems", "bulletAdditions"},
+	"additionalProperties": false,
+}
+
 // coverLetterSchema mirrors model.CoverLetter exactly (camelCase keys).
 var coverLetterSchema = map[string]any{
 	"type": "object",

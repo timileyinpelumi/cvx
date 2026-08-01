@@ -126,6 +126,113 @@ func CoverFilename(name, role string) string {
 	return clean(name) + "_" + clean(role) + "_Cover_Letter.pdf"
 }
 
+// BulletDraft and ItemDraft mirror Bullet and Item minus id fields — the LLM
+// never assigns ids; MergeAdditions does that deterministically, continuing
+// the existing item-N / item-N-b-j sequence.
+type BulletDraft struct {
+	Text   string   `json:"text"`
+	Skills []string `json:"skills"`
+}
+
+type ItemDraft struct {
+	Kind         string        `json:"kind"`
+	Title        string        `json:"title"`
+	Organization string        `json:"organization"`
+	StartDate    string        `json:"startDate"`
+	EndDate      string        `json:"endDate"`
+	Bullets      []BulletDraft `json:"bullets"`
+}
+
+// BulletAddition adds new bullets to an existing item, referenced by its
+// exact (already-assigned) id.
+type BulletAddition struct {
+	ItemID  string        `json:"itemId"`
+	Bullets []BulletDraft `json:"bullets"`
+}
+
+// ProfileAdditions is what ai.ExtendProfile derives from a candidate's typed
+// note: new skills, whole new items, and/or bullets to append to items that
+// already exist in the profile. MergeAdditions is the only thing that turns
+// these into ided Profile content.
+type ProfileAdditions struct {
+	NewSkills       []string         `json:"newSkills"`
+	NewItems        []ItemDraft      `json:"newItems"`
+	BulletAdditions []BulletAddition `json:"bulletAdditions"`
+}
+
+// MergeAdditions applies a into p in place: new skills are appended deduped
+// case-insensitively against existing skills; new items are appended with
+// the next sequential item-N id (continuing from len(p.Items)) and their
+// bullets item-N-b-j; bullet additions are appended to the existing item
+// they reference, continuing that item's own bullet index. Every
+// BulletAddition.ItemID is validated against p's existing items before any
+// mutation happens, so an unknown id (guardrail spirit: additions may only
+// extend content the id scheme already knows about) leaves p unchanged and
+// returns an error naming the id.
+func MergeAdditions(p *Profile, a ProfileAdditions) error {
+	for _, ba := range a.BulletAdditions {
+		found := false
+		for i := range p.Items {
+			if p.Items[i].ID == ba.ItemID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("profile extend: unknown item id %q", ba.ItemID)
+		}
+	}
+
+	existingSkills := map[string]bool{}
+	for _, sk := range p.Skills {
+		existingSkills[strings.ToLower(sk)] = true
+	}
+	for _, sk := range a.NewSkills {
+		key := strings.ToLower(sk)
+		if existingSkills[key] {
+			continue
+		}
+		existingSkills[key] = true
+		p.Skills = append(p.Skills, sk)
+	}
+
+	next := len(p.Items)
+	for _, di := range a.NewItems {
+		item := Item{
+			ID:           fmt.Sprintf("item-%d", next),
+			Kind:         di.Kind,
+			Title:        di.Title,
+			Organization: di.Organization,
+			StartDate:    di.StartDate,
+			EndDate:      di.EndDate,
+			Bullets:      make([]Bullet, len(di.Bullets)),
+		}
+		for j, db := range di.Bullets {
+			item.Bullets[j] = Bullet{ID: fmt.Sprintf("item-%d-b-%d", next, j), Text: db.Text, Skills: db.Skills}
+		}
+		p.Items = append(p.Items, item)
+		next++
+	}
+
+	for _, ba := range a.BulletAdditions {
+		for i := range p.Items {
+			if p.Items[i].ID != ba.ItemID {
+				continue
+			}
+			nextB := len(p.Items[i].Bullets)
+			for _, db := range ba.Bullets {
+				p.Items[i].Bullets = append(p.Items[i].Bullets, Bullet{
+					ID: fmt.Sprintf("%s-b-%d", ba.ItemID, nextB), Text: db.Text, Skills: db.Skills,
+				})
+				nextB++
+			}
+			break
+		}
+	}
+
+	return nil
+}
+
 // NonNil returns s unchanged if it is already non-nil, or an empty
 // (non-nil) slice of the same type otherwise. Use this on any slice field
 // that reaches an HTTP JSON response, so a nil slice (e.g. an LLM response

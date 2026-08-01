@@ -55,3 +55,70 @@ func TestCoverFilename(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestMergeAdditionsNewSkillsDedupCaseInsensitive(t *testing.T) {
+	p := sample() // Skills: ["Python"]
+	err := MergeAdditions(&p, ProfileAdditions{NewSkills: []string{"python", "Go"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Skills) != 2 || p.Skills[0] != "Python" || p.Skills[1] != "Go" {
+		t.Fatalf("want [Python Go], got %v", p.Skills)
+	}
+}
+
+func TestMergeAdditionsNewItemsContinueIDSequence(t *testing.T) {
+	p := sample() // Items: [item-0]
+	err := MergeAdditions(&p, ProfileAdditions{
+		NewItems: []ItemDraft{{
+			Kind: "project", Title: "Side project", Organization: "",
+			Bullets: []BulletDraft{{Text: "Built a CLI"}, {Text: "Shipped v1"}},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Items) != 2 {
+		t.Fatalf("want 2 items, got %d", len(p.Items))
+	}
+	newItem := p.Items[1]
+	if newItem.ID != "item-1" {
+		t.Fatalf("want item-1, got %q", newItem.ID)
+	}
+	if len(newItem.Bullets) != 2 || newItem.Bullets[0].ID != "item-1-b-0" || newItem.Bullets[1].ID != "item-1-b-1" {
+		t.Fatalf("bad bullet ids: %+v", newItem.Bullets)
+	}
+}
+
+func TestMergeAdditionsBulletAdditionsContinuePerItemIndex(t *testing.T) {
+	p := sample() // item-0 has one bullet: item-0-b-0
+	err := MergeAdditions(&p, ProfileAdditions{
+		BulletAdditions: []BulletAddition{{
+			ItemID:  "item-0",
+			Bullets: []BulletDraft{{Text: "Led the migration"}, {Text: "Cut latency 40%"}},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := p.Items[0].Bullets
+	if len(got) != 3 {
+		t.Fatalf("want 3 bullets, got %d: %+v", len(got), got)
+	}
+	if got[1].ID != "item-0-b-1" || got[2].ID != "item-0-b-2" {
+		t.Fatalf("bad continued bullet ids: %+v", got)
+	}
+}
+
+func TestMergeAdditionsUnknownItemIDErrors(t *testing.T) {
+	p := sample()
+	err := MergeAdditions(&p, ProfileAdditions{
+		BulletAdditions: []BulletAddition{{ItemID: "item-9", Bullets: []BulletDraft{{Text: "x"}}}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "item-9") {
+		t.Fatalf("want error naming item-9, got %v", err)
+	}
+	if len(p.Items[0].Bullets) != 1 {
+		t.Fatalf("want profile unchanged on error, got %+v", p.Items[0].Bullets)
+	}
+}

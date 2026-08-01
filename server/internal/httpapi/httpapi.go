@@ -36,6 +36,7 @@ type Server struct {
 func (s *Server) Register(e *echo.Echo) {
 	e.GET("/api/profile", s.getProfile)
 	e.POST("/api/profile", s.postProfile)
+	e.POST("/api/profile/extend", s.postProfileExtend)
 	e.POST("/api/generate", s.postGenerate)
 	e.GET("/api/generations", s.listGenerations)
 	e.GET("/api/gaps", s.getGaps)
@@ -102,6 +103,50 @@ func (s *Server) postProfile(c echo.Context) error {
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusOK, summarize(p))
+}
+
+type extendRequest struct {
+	Note string `json:"note"`
+}
+
+// postProfileExtend converts a typed note into profile additions via the
+// LLM, merges them into the stored profile under model.MergeAdditions' id
+// guardrail, and persists the result. A merge failure (unknown item id) is
+// reported the same way as an LLM failure (502 + "profile extend failed")
+// since both represent the LLM producing something we can't safely apply.
+func (s *Server) postProfileExtend(c echo.Context) error {
+	var req extendRequest
+	if err := c.Bind(&req); err != nil {
+		return errJSON(c, http.StatusBadRequest, "invalid request body")
+	}
+	if strings.TrimSpace(req.Note) == "" {
+		return errJSON(c, http.StatusBadRequest, "note is required")
+	}
+
+	p, err := s.Store.LoadProfile()
+	if err != nil {
+		slog.Error("load profile failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if p == nil {
+		return errJSON(c, http.StatusConflict, "no profile")
+	}
+
+	additions, err := ai.ExtendProfile(c.Request().Context(), s.LLM, *p, req.Note)
+	if err != nil {
+		slog.Error("profile extend failed", "err", err)
+		return errJSON(c, http.StatusBadGateway, err.Error())
+	}
+	if err := model.MergeAdditions(p, additions); err != nil {
+		slog.Error("profile extend failed", "err", err)
+		return errJSON(c, http.StatusBadGateway, err.Error())
+	}
+	if err := s.Store.SaveProfile(*p); err != nil {
+		slog.Error("save profile failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(http.StatusOK, summarize(*p))
 }
 
 type generateRequest struct {

@@ -6,6 +6,7 @@ import { Archive, type GenerationMeta } from "@/components/Archive";
 import { GapTracker, type GapTrend } from "@/components/GapTracker";
 import { Generator } from "@/components/Generator";
 import { Logo } from "@/components/Logo";
+import { ProfileUpdate } from "@/components/ProfileUpdate";
 import { Stitch } from "@/components/Stitch";
 import { Uploader, type ProfileSummary } from "@/components/Uploader";
 import type { GenerateResult } from "@/components/ResultTag";
@@ -92,6 +93,7 @@ export default function Home() {
               <span className="profile-sep">·</span>
               <span className="profile-count">{profile.skillCount}</span> skills
             </p>
+            <ProfileUpdate onUpdated={setProfile} />
             <Generator result={result} onResult={handleResult} />
           </>
         ) : null}

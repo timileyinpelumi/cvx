@@ -28,6 +28,7 @@ import (
 type fakeLLM struct {
 	tailorOut string
 	coverOut  string
+	extendOut string
 }
 
 const digitizeJSON = `{"name":"Ada","email":"a@e.com","phone":"","location":"","summary":"","links":[],"skills":["Python","Go"],
@@ -46,6 +47,28 @@ const tailorJSONEmptyArrays = `{"targetRole":"Python Backend Engineer","headline
 	"gaps":[],"whatChanged":[]}`
 
 const coverJSON = `{"greeting":"Dear hiring team,","paragraphs":["I am excited to apply for this role.","My experience aligns well with what you need."],"closing":"Sincerely,"}`
+
+// extendJSON adds one new skill and one new item, so a happy-path test can
+// assert both itemCount and skillCount grow. "Rust" is deliberately not
+// already in digitizeJSON's skills (["Python","Go"]) so it isn't deduped away.
+const extendJSON = `{"newSkills":["Rust"],"newItems":[{"kind":"project","title":"Side project","organization":"","startDate":"2024-01","endDate":"","bullets":[{"text":"Built a CLI tool","skills":["Rust"]}]}],"bulletAdditions":[]}`
+
+// extendUnknownIDJSON references an item id that cannot exist in a freshly
+// digitized profile (which only ever has item-0), driving the 502 branch of
+// postProfileExtend via model.MergeAdditions' guardrail.
+const extendUnknownIDJSON = `{"newSkills":[],"newItems":[],"bulletAdditions":[{"itemId":"item-99","bullets":[{"text":"x","skills":[]}]}]}`
+
+// isExtendSchema reports whether schema is the ai package's profile-additions
+// schema (shape-tested: its top-level properties include "newSkills"), as
+// opposed to the tailor or cover-letter schemas.
+func isExtendSchema(schema map[string]any) bool {
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return false
+	}
+	_, ok = props["newSkills"]
+	return ok
+}
 
 // isCoverLetterSchema reports whether schema is the ai package's cover
 // letter schema (shape-tested: its top-level properties include "greeting"),
@@ -73,6 +96,12 @@ func (f fakeLLM) GenerateJSON(_ context.Context, _ string, blocks []ai.ContentBl
 			return []byte(f.coverOut), nil
 		}
 		return []byte(coverJSON), nil
+	}
+	if isExtendSchema(schema) {
+		if f.extendOut != "" {
+			return []byte(f.extendOut), nil
+		}
+		return []byte(extendJSON), nil
 	}
 	if f.tailorOut != "" {
 		return []byte(f.tailorOut), nil
@@ -130,6 +159,13 @@ func uploadRequest(t *testing.T, pdf []byte) *http.Request {
 	}
 	req := httptest.NewRequest(http.MethodPost, "/api/profile", &buf)
 	req.Header.Set(echo.HeaderContentType, w.FormDataContentType())
+	return req
+}
+
+func extendRequestBody(note string) *http.Request {
+	body, _ := json.Marshal(extendRequest{Note: note})
+	req := httptest.NewRequest(http.MethodPost, "/api/profile/extend", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	return req
 }
 
@@ -564,6 +600,98 @@ func TestGenerateWithoutCoverLetterNoCoverRoute(t *testing.T) {
 	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations/"+got.ID+"/cover", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("want 404, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestExtendProfileBeforeProfile(t *testing.T) {
+	_, e := newTestServer(t)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, extendRequestBody("shipped v2"))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("want 409, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestExtendProfileEmptyNote(t *testing.T) {
+	_, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake"))) // seed profile
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, extendRequestBody("   "))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// TestExtendProfileHappyPath checks that a successful extend grows both
+// itemCount (a new item) and skillCount (a new skill), matching the summary
+// shape returned by GET /api/profile and POST /api/profile.
+func TestExtendProfileHappyPath(t *testing.T) {
+	_, e := newTestServer(t)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, uploadRequest(t, []byte("%PDF-fake")))
+	var seeded profileSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &seeded); err != nil {
+		t.Fatal(err)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, extendRequestBody("Also built a CLI tool in Rust on the side"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var got profileSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ItemCount != seeded.ItemCount+1 {
+		t.Fatalf("want itemCount to grow by 1, got %d -> %d", seeded.ItemCount, got.ItemCount)
+	}
+	if got.SkillCount != seeded.SkillCount+1 {
+		t.Fatalf("want skillCount to grow by 1, got %d -> %d", seeded.SkillCount, got.SkillCount)
+	}
+
+	// The extend must have persisted: a fresh GET reflects the same counts.
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile", nil))
+	var reloaded profileSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &reloaded); err != nil {
+		t.Fatal(err)
+	}
+	if reloaded != got {
+		t.Fatalf("want persisted profile to match response, got %+v vs %+v", reloaded, got)
+	}
+}
+
+// TestExtendProfileUnknownItemIDReturns502 drives model.MergeAdditions'
+// guardrail (a bulletAddition referencing an item id the profile does not
+// have) through the HTTP layer: it must surface as 502, not succeed or panic,
+// and the stored profile must be left untouched.
+func TestExtendProfileUnknownItemIDReturns502(t *testing.T) {
+	_, e := newTestServerWithLLM(t, fakeLLM{extendOut: extendUnknownIDJSON})
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, extendRequestBody("references a role that isn't in the profile"))
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("want 502, got %d: %s", rec.Code, rec.Body)
+	}
+	var got map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got["error"], "item-99") {
+		t.Fatalf("want error naming item-99, got %+v", got)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile", nil))
+	var afterFailure profileSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &afterFailure); err != nil {
+		t.Fatal(err)
+	}
+	if afterFailure.ItemCount != 1 || afterFailure.SkillCount != 2 {
+		t.Fatalf("want profile unchanged after failed extend, got %+v", afterFailure)
 	}
 }
 
