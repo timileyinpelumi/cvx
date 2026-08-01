@@ -15,17 +15,21 @@ export function ProfileUpdate({ onUpdated }: ProfileUpdateProps) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  // A counter rather than a boolean: resubmitting within the 4s window bumps
+  // this to a new value even though the visible state (shown) stays true, so
+  // the effect below still re-fires and restarts the hide timer.
+  const [successTick, setSuccessTick] = useState(0);
+  const success = successTick > 0;
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
 
   useEffect(() => {
-    if (!success) return;
-    const timer = setTimeout(() => setSuccess(false), 4000);
+    if (successTick === 0) return;
+    const timer = setTimeout(() => setSuccessTick(0), 4000);
     return () => clearTimeout(timer);
-  }, [success]);
+  }, [successTick]);
 
   function toggle() {
     setOpen((wasOpen) => !wasOpen);
@@ -60,7 +64,7 @@ export function ProfileUpdate({ onUpdated }: ProfileUpdateProps) {
       onUpdated(profile);
       setNote("");
       setOpen(false);
-      setSuccess(true);
+      setSuccessTick((t) => t + 1);
     } catch {
       setErrorDetail("server unreachable");
       setFailed(true);

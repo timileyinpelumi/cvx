@@ -152,6 +152,45 @@ func TestGapSummaryGroupsCasingFiltersSingletonsAndTracksNewest(t *testing.T) {
 	}
 }
 
+// TestGapSummaryDedupesWithinGeneration guards against counting gaps
+// per-occurrence instead of per-generation: a single generation whose
+// tailored output lists "Django" and "django " (same normalized key) must
+// still contribute only 1 to Count, not 2.
+func TestGapSummaryDedupesWithinGeneration(t *testing.T) {
+	s := open(t)
+
+	mk := func(gaps ...model.Gap) model.Tailored { return model.Tailored{TargetRole: "X", Gaps: gaps} }
+
+	if _, err := s.SaveGeneration(mk(
+		model.Gap{Requirement: "Django", Evidence: "e1", Severity: "missing"},
+		model.Gap{Requirement: "django ", Evidence: "e1-dup", Severity: "weak"},
+	), []byte("p"), "a.pdf", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, err := s.SaveGeneration(mk(model.Gap{Requirement: "Django", Evidence: "e2", Severity: "missing"}), []byte("p"), "b.pdf", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	trends, total, err := s.GapSummary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 {
+		t.Fatalf("want total 2 generations, got %d", total)
+	}
+	if len(trends) != 1 {
+		t.Fatalf("want 1 trend, got %+v", trends)
+	}
+	tr := trends[0]
+	if tr.Count != 2 {
+		t.Fatalf("want count 2 (one per generation, not per gap occurrence), got %d", tr.Count)
+	}
+	if tr.Missing != 2 || tr.Weak != 0 {
+		t.Fatalf("want missing 2 weak 0 (first occurrence in gen 1 wins severity), got missing=%d weak=%d", tr.Missing, tr.Weak)
+	}
+}
+
 func TestGapSummaryOrdering(t *testing.T) {
 	s := open(t)
 

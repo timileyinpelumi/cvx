@@ -83,8 +83,10 @@ export default function Home() {
 
   function handleResult(next: GenerateResult) {
     setResult(next);
-    void loadGenerations();
-    void loadGaps();
+    void (async () => {
+      const results = await Promise.all([loadGenerations(), loadGaps()]);
+      if (results.some(Boolean)) setUnauthorized(true);
+    })();
   }
 
   const earlier = generations.filter((row) => row.id !== result?.id);

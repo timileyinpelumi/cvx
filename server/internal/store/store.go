@@ -294,6 +294,12 @@ func (s *Store) GapSummary() ([]GapTrend, int, error) {
 		if err := json.Unmarshal([]byte(raw), &t); err != nil {
 			return nil, 0, err
 		}
+		// A generation whose tailored output lists the same requirement twice
+		// (e.g. differing only in casing) must still count as one gap for
+		// that generation, so Count never exceeds the number of generations
+		// that actually raised it. seenInGen tracks keys already tallied for
+		// the current row; severity is taken from the first occurrence.
+		seenInGen := map[string]bool{}
 		for _, g := range t.Gaps {
 			key := normalizeRequirement(g.Requirement)
 			if key == "" {
@@ -305,12 +311,15 @@ func (s *Store) GapSummary() ([]GapTrend, int, error) {
 				groups[key] = gr
 				order = append(order, key)
 			}
-			gr.count++
-			switch g.Severity {
-			case "missing":
-				gr.missing++
-			case "weak":
-				gr.weak++
+			if !seenInGen[key] {
+				seenInGen[key] = true
+				gr.count++
+				switch g.Severity {
+				case "missing":
+					gr.missing++
+				case "weak":
+					gr.weak++
+				}
 			}
 			// Iterating oldest to newest, so the last write for this key
 			// leaves the requirement casing and evidence from the newest

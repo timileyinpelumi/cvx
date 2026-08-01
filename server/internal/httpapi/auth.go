@@ -54,6 +54,7 @@ func (a *Auth) postLogin(c echo.Context) error {
 		Path:     "/",
 		MaxAge:   sessionMaxAgeSecs,
 		HttpOnly: true,
+		// Secure intentionally omitted — cvx serves plain HTTP on localhost only.
 		SameSite: http.SameSiteLaxMode,
 	})
 	return c.NoContent(http.StatusNoContent)

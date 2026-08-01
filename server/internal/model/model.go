@@ -196,6 +196,8 @@ func MergeAdditions(p *Profile, a ProfileAdditions) error {
 		p.Skills = append(p.Skills, sk)
 	}
 
+	// len(p.Items) is only a valid source of fresh, unused item-N ids because
+	// nothing ever deletes an item; revisit this if a delete path is added.
 	next := len(p.Items)
 	for _, di := range a.NewItems {
 		item := Item{
