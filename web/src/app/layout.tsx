@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 import "@fontsource/bricolage-grotesque/600.css";
 import "@fontsource/bricolage-grotesque/700.css";
@@ -14,6 +14,11 @@ import "./tokens.css";
 export const metadata: Metadata = {
   title: "cvx",
   description: "Keep one profile. Get a resume cut to fit any role.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({

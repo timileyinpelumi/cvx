@@ -1,0 +1,535 @@
+/* cvx — single page. Mobile first; 481px and 768px are the two refinements.
+   Spacing sits on an 8px grid (4px is only used for label/value pairs). */
+
+/* ---------------------------------------------------------------- shell -- */
+
+.shell {
+  width: 100%;
+  max-width: 660px;
+  margin: 0 auto;
+  padding: 48px 16px 64px;
+}
+
+@media (min-width: 481px) {
+  .shell {
+    padding: 56px 20px 80px;
+  }
+}
+
+@media (min-width: 768px) {
+  .shell {
+    padding: 72px 24px 96px;
+  }
+}
+
+/* ------------------------------------------------------------- masthead -- */
+
+.masthead {
+  margin-bottom: 40px;
+}
+
+.masthead-mark {
+  display: flex;
+  font-size: 0;
+  line-height: 0;
+}
+
+.masthead-stitch {
+  margin-top: 10px;
+}
+
+.tagline {
+  margin-top: 16px;
+  color: var(--muted);
+  text-wrap: balance;
+}
+
+@media (min-width: 768px) {
+  .masthead {
+    margin-bottom: 48px;
+  }
+}
+
+/* The state area holds either the uploader or the tailor composer, never both,
+   so its height is entirely the child's. */
+.stage,
+.tailor {
+  display: flow-root;
+}
+
+/* -------------------------------------------------------------- buttons -- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--radius-control);
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.btn--primary {
+  background: var(--chalk);
+  color: #fff;
+}
+
+.btn--primary:hover {
+  background: color-mix(in srgb, var(--chalk) 86%, #000);
+}
+
+.btn--primary:disabled,
+.btn--primary.is-disabled {
+  background: color-mix(in srgb, var(--edge) 55%, var(--card));
+  color: var(--muted);
+  cursor: default;
+}
+
+.btn--block {
+  width: 100%;
+}
+
+@media (min-width: 481px) {
+  .btn--block {
+    width: auto;
+  }
+}
+
+@media (min-width: 768px) {
+  .btn {
+    min-height: 40px;
+  }
+}
+
+/* The file input stays in the DOM and focusable so the label reads as a
+   button while Enter and Space still open the picker. */
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.file-input:focus-visible + .btn {
+  outline: 2px solid var(--chalk);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------- notices -- */
+
+/* The live region stays mounted so changes are announced, but must not add
+   space to the layout while it holds nothing. */
+.notice-slot:empty {
+  display: none;
+}
+
+.notice {
+  margin-top: 16px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.notice--error {
+  color: var(--gap-missing);
+}
+
+/* ------------------------------------------------------------- uploader -- */
+
+.uploader {
+  padding: 20px;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.uploader--dragging {
+  border-color: var(--chalk);
+  background: color-mix(in srgb, var(--chalk) 4%, var(--card));
+}
+
+.uploader-heading {
+  font-family: var(--font-body);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.uploader-body {
+  margin-top: 8px;
+  max-width: 46ch;
+  color: var(--muted);
+}
+
+.uploader-action {
+  position: relative;
+  margin-top: 24px;
+}
+
+@media (min-width: 481px) {
+  .uploader {
+    padding: 24px;
+  }
+
+  .uploader-heading {
+    font-size: 26px;
+  }
+}
+
+@media (min-width: 768px) {
+  .uploader {
+    padding: 32px;
+  }
+
+  .uploader-heading {
+    font-size: 28px;
+  }
+}
+
+/* --------------------------------------------------------- profile line -- */
+
+.profile-line {
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.profile-name {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.profile-sep {
+  padding: 0 7px;
+  opacity: 0.5;
+}
+
+.profile-count {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------------------- tailor -- */
+
+.composer-field {
+  display: block;
+  width: 100%;
+  min-height: calc(4.5em + 34px);
+  padding: 16px;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  /* 16px keeps iOS from zooming the viewport when the field takes focus. */
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink);
+  resize: none;
+  overflow-y: auto;
+  transition: border-color 120ms ease;
+}
+
+.composer-field::placeholder {
+  color: var(--muted);
+}
+
+.composer-field:hover {
+  border-color: color-mix(in srgb, var(--edge) 55%, var(--muted));
+}
+
+.composer-field:disabled {
+  color: var(--muted);
+  opacity: 1;
+  -webkit-text-fill-color: var(--muted);
+}
+
+.composer-actions {
+  margin-top: 16px;
+}
+
+@media (min-width: 481px) {
+  .composer-field {
+    min-height: calc(4.5em + 42px);
+    padding: 20px;
+    font-size: 15px;
+  }
+
+  /* Holds its box when the label swaps to "Tailoring". */
+  .composer-actions .btn {
+    min-width: 152px;
+  }
+}
+
+/* ---------------------------------------------------------- result tag -- */
+
+.result-tag {
+  margin-top: 32px;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.result-tag-stitch {
+  width: 100%;
+}
+
+.result-tag-body {
+  padding: 20px;
+}
+
+/* While tailoring there is nothing to show yet, so the tag stays a blank
+   strip with the stitch running across it rather than an empty full card. */
+.result-tag--pending .result-tag-body {
+  min-height: 40px;
+  padding: 0;
+}
+
+/* dasharray 1 on a pathLength of 1 means dash 1 / gap 1, so sweeping the
+   offset from 1 to -1 runs the stitch across the edge and off again. */
+.result-tag--pending .result-tag-stitch mask line {
+  animation: stitch-sew 1800ms linear infinite;
+}
+
+@keyframes stitch-sew {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: -1;
+  }
+}
+
+.result-tag-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.result-file {
+  max-width: 100%;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-note {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.result-block {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--edge);
+}
+
+.block-heading {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--muted);
+}
+
+.change-list {
+  margin-top: 12px;
+  padding-left: 18px;
+}
+
+.change-row {
+  margin-top: 8px;
+  overflow-wrap: break-word;
+}
+
+.change-row::marker {
+  color: color-mix(in srgb, var(--muted) 45%, var(--card));
+}
+
+.change-row:first-child {
+  margin-top: 0;
+}
+
+.gap-list {
+  margin-top: 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.gap-row {
+  display: grid;
+  gap: 4px;
+  margin-top: 16px;
+}
+
+.gap-row:first-child {
+  margin-top: 0;
+}
+
+.gap-severity {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.gap-severity--missing {
+  color: var(--gap-missing);
+}
+
+.gap-severity--weak {
+  color: var(--gap-weak);
+}
+
+.gap-text {
+  overflow-wrap: break-word;
+}
+
+.gap-requirement {
+  font-weight: 500;
+}
+
+.gap-evidence {
+  color: var(--muted);
+}
+
+@media (min-width: 481px) {
+  .result-tag-body {
+    padding: 24px;
+  }
+
+  .result-tag-head {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .result-file {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .result-tag-head .btn {
+    flex: 0 0 auto;
+  }
+
+  .result-block {
+    margin-top: 24px;
+    padding-top: 24px;
+  }
+
+  .gap-row {
+    grid-template-columns: 56px 1fr;
+    gap: 12px;
+    align-items: baseline;
+  }
+}
+
+/* ------------------------------------------------------------- archive -- */
+
+.archive {
+  margin-top: 48px;
+}
+
+.section-heading {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--muted);
+}
+
+.archive-list {
+  margin-top: 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.archive-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  column-gap: 16px;
+  row-gap: 4px;
+  padding: 8px 0;
+}
+
+.archive-row + .archive-row {
+  border-top: 1px solid var(--edge);
+}
+
+.archive-role {
+  grid-column: 1;
+  grid-row: 1;
+  font-weight: 500;
+  overflow-wrap: break-word;
+}
+
+.archive-date {
+  grid-column: 1;
+  grid-row: 2;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.archive-link {
+  display: inline-flex;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-items: center;
+  min-height: 44px;
+  padding-left: 12px;
+  color: var(--chalk);
+  font-weight: 500;
+}
+
+.archive-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (min-width: 481px) {
+  .archive-row {
+    grid-template-columns: 1fr auto auto;
+    column-gap: 24px;
+    padding: 4px 0;
+  }
+
+  .archive-date {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .archive-link {
+    grid-column: 3;
+    grid-row: 1;
+    padding-left: 0;
+  }
+}
+
+@media (min-width: 768px) {
+  .archive {
+    margin-top: 64px;
+  }
+}

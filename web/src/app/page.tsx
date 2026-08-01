@@ -1,66 +1,86 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+
+import { Archive, type GenerationMeta } from "@/components/Archive";
+import { Generator } from "@/components/Generator";
+import { Logo } from "@/components/Logo";
+import { Stitch } from "@/components/Stitch";
+import { Uploader, type ProfileSummary } from "@/components/Uploader";
+import type { GenerateResult } from "@/components/ResultTag";
+
+import "./page.css";
 
 export default function Home() {
+  const [loaded, setLoaded] = useState(false);
+  const [profile, setProfile] = useState<ProfileSummary | null>(null);
+  const [generations, setGenerations] = useState<GenerationMeta[]>([]);
+  const [result, setResult] = useState<GenerateResult | null>(null);
+
+  const loadGenerations = useCallback(async () => {
+    try {
+      const res = await fetch("/api/generations");
+      if (!res.ok) return;
+      setGenerations((await res.json()) as GenerationMeta[]);
+    } catch {
+      // The archive is supplementary; a failed load just leaves it hidden.
+    }
+  }, []);
+
+  useEffect(() => {
+    async function load() {
+      const [summary] = await Promise.all([
+        fetch("/api/profile")
+          .then((res) => (res.ok ? (res.json() as Promise<ProfileSummary>) : null))
+          // A failed load is treated as "no profile yet": upload state shows.
+          .catch(() => null),
+        loadGenerations(),
+      ]);
+      if (summary) setProfile(summary);
+      setLoaded(true);
+    }
+    void load();
+  }, [loadGenerations]);
+
+  function handleResult(next: GenerateResult) {
+    setResult(next);
+    void loadGenerations();
+  }
+
+  const earlier = generations.filter((row) => row.id !== result?.id);
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+    <div className="shell">
+      <header className="masthead">
+        <h1 className="masthead-mark">
+          <Logo height={28} />
+        </h1>
+        <Stitch width={60} className="masthead-stitch" />
+        <p className="tagline">
+          Keep one profile. Get a resume cut to fit any role.
+        </p>
+      </header>
+
+      <main className="stage">
+        {loaded && profile === null ? (
+          <Uploader onUploaded={setProfile} />
+        ) : null}
+
+        {loaded && profile !== null ? (
+          <>
+            <p className="profile-line">
+              <span className="profile-name">{profile.name}</span>
+              <span className="profile-sep">·</span>
+              <span className="profile-count">{profile.itemCount}</span> items
+              <span className="profile-sep">·</span>
+              <span className="profile-count">{profile.skillCount}</span> skills
+            </p>
+            <Generator result={result} onResult={handleResult} />
+          </>
+        ) : null}
       </main>
+
+      <Archive rows={earlier} />
     </div>
   );
 }
