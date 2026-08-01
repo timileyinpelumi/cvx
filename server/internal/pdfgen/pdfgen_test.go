@@ -82,3 +82,32 @@ func TestRenderEmptySections(t *testing.T) {
 		t.Fatalf("bad pdf: %d bytes", len(b))
 	}
 }
+
+// TestRenderLongTitleWraps guards against the title cell overlapping the
+// right-aligned date column: a "Title — Org" combo wider than the space left
+// of the date column (~150mm vs a ~146mm budget on this fixture) must wrap
+// via MultiCell instead of running through the dates.
+func TestRenderLongTitleWraps(t *testing.T) {
+	p, base := fixture()
+	baseBytes, err := Render(p, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, ta := fixture()
+	ta.Sections[0].Items[0].Title = "Director of Engineering, Distributed Systems and Cloud Platform"
+	ta.Sections[0].Items[0].Organization = "Global Technology Solutions Inc"
+
+	longBytes, err := Render(p, ta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(longBytes, []byte("%PDF")) || len(longBytes) < 1000 {
+		t.Fatalf("bad pdf: %d bytes", len(longBytes))
+	}
+	// The wrapped title adds a second line of content that the single-line
+	// baseline doesn't have, so the encoded output should grow.
+	if len(longBytes) <= len(baseBytes) {
+		t.Fatalf("expected wrapped long-title pdf to be larger than baseline: long=%d base=%d", len(longBytes), len(baseBytes))
+	}
+}

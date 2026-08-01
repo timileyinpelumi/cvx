@@ -168,8 +168,7 @@ func renderSection(pdf *fpdf.Fpdf, s model.TSection) {
 	gray := grayComponent()
 	pdf.SetDrawColor(gray, gray, gray)
 	pdf.SetLineWidth(0.2)
-	left, top, _, _ := pdf.GetMargins()
-	_ = top
+	left, _, _, _ := pdf.GetMargins()
 	y := pdf.GetY()
 	pdf.Line(left, y, left+w, y)
 	pdf.Ln(ruleToBody)
@@ -212,10 +211,27 @@ func renderItem(pdf *fpdf.Fpdf, it model.TItem) {
 
 	pdf.SetTextColor(0, 0, 0)
 	pdf.SetFont(fontFamily, "B", itemSize)
-	pdf.CellFormat(titleWidth, h, title, "", 0, "L", false, 0, "")
 
-	pdf.SetFont(fontFamily, "", dateSize)
-	pdf.CellFormat(dateWidth, h, it.Dates, "", 1, "R", false, 0, "")
+	if pdf.GetStringWidth(title) > titleWidth {
+		// Title too wide for the space left of the date column: wrap it
+		// within titleWidth (held constant across wrapped lines) via
+		// MultiCell so it can never bleed into the date column, and place
+		// the date on the first baseline only.
+		x, y := pdf.GetX(), pdf.GetY()
+		pdf.MultiCell(titleWidth, h, title, "", "L", false)
+		endY := pdf.GetY()
+
+		if it.Dates != "" {
+			pdf.SetFont(fontFamily, "", dateSize)
+			pdf.SetXY(x+titleWidth, y)
+			pdf.CellFormat(dateWidth, h, it.Dates, "", 0, "R", false, 0, "")
+		}
+		pdf.SetXY(x, endY)
+	} else {
+		pdf.CellFormat(titleWidth, h, title, "", 0, "L", false, 0, "")
+		pdf.SetFont(fontFamily, "", dateSize)
+		pdf.CellFormat(dateWidth, h, it.Dates, "", 1, "R", false, 0, "")
+	}
 
 	if len(it.Bullets) > 0 {
 		pdf.Ln(0.8)
