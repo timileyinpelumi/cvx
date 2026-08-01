@@ -25,9 +25,9 @@ export function Logo({ height = VIEW_H, className }: LogoProps) {
       fill="none"
     >
       <title>cvx</title>
-      <path d={C_PATH} fill="var(--ink)" />
-      <path d={V_PATH} fill="var(--ink)" />
-      <g stroke="var(--chalk)" strokeWidth="3.4" strokeLinecap="round">
+      <path d={C_PATH} fill="var(--ink, #1C2422)" />
+      <path d={V_PATH} fill="var(--ink, #1C2422)" />
+      <g stroke="var(--chalk, #2244D9)" strokeWidth="3.4" strokeLinecap="round">
         <line x1="41.27" y1="6.1" x2="57.07" y2="21.9" />
         <line x1="57.07" y1="6.1" x2="41.27" y2="21.9" />
       </g>
