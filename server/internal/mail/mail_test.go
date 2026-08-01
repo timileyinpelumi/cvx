@@ -116,6 +116,56 @@ func TestSend_Configured_PostsExpectedPayload(t *testing.T) {
 	}
 }
 
+func TestSend_WithCoverLetter_IncludesBothAttachments(t *testing.T) {
+	t.Setenv("RESEND_API_KEY", "test-key-123")
+	t.Setenv("CVX_EMAIL_TO", "candidate@example.com")
+
+	pdf := []byte("%PDF-1.4 resume")
+	cover := []byte("%PDF-1.4 cover letter")
+
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, &gotBody); err != nil {
+			t.Fatalf("failed to unmarshal request body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"abc123"}`))
+	}))
+	defer srv.Close()
+
+	sent, err := Send(fixture(), pdf, "resume.pdf", srv.URL, Attachment{Filename: "cover.pdf", Content: cover})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !sent {
+		t.Fatal("expected sent=true")
+	}
+
+	attachments, ok := gotBody["attachments"].([]any)
+	if !ok || len(attachments) != 2 {
+		t.Fatalf("attachments = %v, want two attachments", gotBody["attachments"])
+	}
+
+	first, ok := attachments[0].(map[string]any)
+	if !ok || first["filename"] != "resume.pdf" {
+		t.Fatalf("first attachment = %v, want filename resume.pdf", attachments[0])
+	}
+	firstDecoded, err := base64.StdEncoding.DecodeString(first["content"].(string))
+	if err != nil || string(firstDecoded) != string(pdf) {
+		t.Fatalf("first attachment content mismatch: decoded=%q err=%v", firstDecoded, err)
+	}
+
+	second, ok := attachments[1].(map[string]any)
+	if !ok || second["filename"] != "cover.pdf" {
+		t.Fatalf("second attachment = %v, want filename cover.pdf", attachments[1])
+	}
+	secondDecoded, err := base64.StdEncoding.DecodeString(second["content"].(string))
+	if err != nil || string(secondDecoded) != string(cover) {
+		t.Fatalf("second attachment content mismatch: decoded=%q err=%v", secondDecoded, err)
+	}
+}
+
 func TestSend_NonSuccessStatus_ReturnsError(t *testing.T) {
 	t.Setenv("RESEND_API_KEY", "test-key-123")
 	t.Setenv("CVX_EMAIL_TO", "candidate@example.com")

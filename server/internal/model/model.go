@@ -112,6 +112,20 @@ func Filename(name, role string) string {
 	return clean(name) + "_" + clean(role) + ".pdf"
 }
 
+// CoverLetter is an optional second document generated alongside the
+// tailored resume: a short letter addressed to the hiring team (or a named
+// company), referencing only facts present in the candidate's profile.
+type CoverLetter struct {
+	Greeting   string   `json:"greeting"`
+	Paragraphs []string `json:"paragraphs"`
+	Closing    string   `json:"closing"`
+}
+
+func CoverFilename(name, role string) string {
+	clean := func(s string) string { return strings.Trim(nonAlnum.ReplaceAllString(s, "_"), "_") }
+	return clean(name) + "_" + clean(role) + "_Cover_Letter.pdf"
+}
+
 // NonNil returns s unchanged if it is already non-nil, or an empty
 // (non-nil) slice of the same type otherwise. Use this on any slice field
 // that reaches an HTTP JSON response, so a nil slice (e.g. an LLM response

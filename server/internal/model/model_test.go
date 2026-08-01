@@ -48,3 +48,10 @@ func TestFilename(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestCoverFilename(t *testing.T) {
+	got := CoverFilename("Ada  Lovelace", "Sr. Engineer (Backend)")
+	if got != "Ada_Lovelace_Sr_Engineer_Backend_Cover_Letter.pdf" {
+		t.Fatalf("got %q", got)
+	}
+}

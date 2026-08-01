@@ -72,7 +72,10 @@ func main() {
 	srv := &httpapi.Server{
 		Store: st,
 		LLM:   llm,
-		Mail: func(t model.Tailored, pdf []byte, filename string) (bool, error) {
+		Mail: func(t model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error) {
+			if coverPDF != nil {
+				return mail.Send(t, pdf, filename, "", mail.Attachment{Filename: coverFilename, Content: coverPDF})
+			}
 			return mail.Send(t, pdf, filename, "")
 		},
 	}

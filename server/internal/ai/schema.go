@@ -134,3 +134,18 @@ var tailoredSchema = map[string]any{
 	"required":             []string{"targetRole", "headline", "summary", "selectedSkills", "sections", "gaps", "whatChanged"},
 	"additionalProperties": false,
 }
+
+// coverLetterSchema mirrors model.CoverLetter exactly (camelCase keys).
+var coverLetterSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"greeting": map[string]any{"type": "string"},
+		"paragraphs": map[string]any{
+			"type":  "array",
+			"items": map[string]any{"type": "string"},
+		},
+		"closing": map[string]any{"type": "string"},
+	},
+	"required":             []string{"greeting", "paragraphs", "closing"},
+	"additionalProperties": false,
+}

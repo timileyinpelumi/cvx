@@ -25,11 +25,12 @@ const maxUploadBytes = 15 << 20 // 15MB
 
 // Server holds the dependencies the HTTP handlers need. Mail is injectable
 // (it wraps mail.Send in main.go) so tests can fake it and so a failed send
-// never fails the /api/generate request.
+// never fails the /api/generate request. coverPDF/coverFilename are ""/nil
+// when the generation has no cover letter.
 type Server struct {
 	Store *store.Store
 	LLM   ai.LLM
-	Mail  func(model.Tailored, []byte, string) (bool, error)
+	Mail  func(t model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error)
 }
 
 func (s *Server) Register(e *echo.Echo) {
@@ -38,6 +39,7 @@ func (s *Server) Register(e *echo.Echo) {
 	e.POST("/api/generate", s.postGenerate)
 	e.GET("/api/generations", s.listGenerations)
 	e.GET("/api/generations/:id/pdf", s.getGenerationPDF)
+	e.GET("/api/generations/:id/cover", s.getGenerationCoverPDF)
 }
 
 type profileSummary struct {
@@ -102,15 +104,18 @@ func (s *Server) postProfile(c echo.Context) error {
 }
 
 type generateRequest struct {
-	RoleInput string `json:"roleInput"`
+	RoleInput   string `json:"roleInput"`
+	CoverLetter bool   `json:"coverLetter"`
 }
 
 type generateResponse struct {
-	ID          string      `json:"id"`
-	Filename    string      `json:"filename"`
-	Gaps        []model.Gap `json:"gaps"`
-	WhatChanged []string    `json:"whatChanged"`
-	Emailed     bool        `json:"emailed"`
+	ID            string      `json:"id"`
+	Filename      string      `json:"filename"`
+	Gaps          []model.Gap `json:"gaps"`
+	WhatChanged   []string    `json:"whatChanged"`
+	Emailed       bool        `json:"emailed"`
+	CoverFilename string      `json:"coverFilename"`
+	CoverLetter   bool        `json:"coverLetter"`
 }
 
 func (s *Server) postGenerate(c echo.Context) error {
@@ -154,7 +159,24 @@ func (s *Server) postGenerate(c echo.Context) error {
 	}
 
 	filename := model.Filename(p.Name, tailored.TargetRole)
-	meta, err := s.Store.SaveGeneration(tailored, pdf, filename)
+
+	// Cover letter generation is best-effort: its failure never fails the
+	// resume generation, it just leaves coverPDF/coverFilename empty so the
+	// response reports coverLetter=false.
+	var coverPDF []byte
+	var coverFilename string
+	if req.CoverLetter {
+		if cl, err := ai.CoverLetter(ctx, s.LLM, *p, req.RoleInput); err != nil {
+			slog.Error("cover letter failed", "err", err)
+		} else if rendered, err := pdfgen.RenderCoverLetter(*p, tailored.TargetRole, cl); err != nil {
+			slog.Error("cover letter failed", "err", err)
+		} else {
+			coverPDF = rendered
+			coverFilename = model.CoverFilename(p.Name, tailored.TargetRole)
+		}
+	}
+
+	meta, err := s.Store.SaveGeneration(tailored, pdf, filename, coverPDF, coverFilename)
 	if err != nil {
 		slog.Error("save generation failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
@@ -162,7 +184,7 @@ func (s *Server) postGenerate(c echo.Context) error {
 
 	emailed := false
 	if s.Mail != nil {
-		ok, err := s.Mail(tailored, pdf, filename)
+		ok, err := s.Mail(tailored, pdf, filename, coverPDF, coverFilename)
 		if err != nil {
 			slog.Warn("email send failed", "err", err)
 		}
@@ -170,11 +192,13 @@ func (s *Server) postGenerate(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, generateResponse{
-		ID:          meta.ID,
-		Filename:    meta.Filename,
-		Gaps:        model.NonNil(tailored.Gaps),
-		WhatChanged: model.NonNil(tailored.WhatChanged),
-		Emailed:     emailed,
+		ID:            meta.ID,
+		Filename:      meta.Filename,
+		Gaps:          model.NonNil(tailored.Gaps),
+		WhatChanged:   model.NonNil(tailored.WhatChanged),
+		Emailed:       emailed,
+		CoverFilename: coverFilename,
+		CoverLetter:   coverFilename != "",
 	})
 }
 
@@ -199,6 +223,20 @@ func (s *Server) getGenerationPDF(c echo.Context) error {
 	}
 	if pdf == nil {
 		return errJSON(c, http.StatusNotFound, "unknown generation id")
+	}
+	c.Response().Header().Set(echo.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s"`, filename))
+	return c.Blob(http.StatusOK, "application/pdf", pdf)
+}
+
+func (s *Server) getGenerationCoverPDF(c echo.Context) error {
+	id := c.Param("id")
+	pdf, filename, err := s.Store.GetGenerationCoverPDF(id)
+	if err != nil {
+		slog.Error("get generation cover pdf failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if pdf == nil {
+		return errJSON(c, http.StatusNotFound, "no cover letter for this generation")
 	}
 	c.Response().Header().Set(echo.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s"`, filename))
 	return c.Blob(http.StatusOK, "application/pdf", pdf)

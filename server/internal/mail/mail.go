@@ -36,11 +36,19 @@ type sendRequest struct {
 	Attachments []attachment `json:"attachments"`
 }
 
-// Send posts the tailored resume PDF to Resend as an email attachment.
-// It returns (false, nil) without making a network call when RESEND_API_KEY
-// or CVX_EMAIL_TO is unset or empty. endpoint == "" defaults to the Resend
-// emails endpoint; a non-empty value is used as-is (for tests).
-func Send(t model.Tailored, pdf []byte, filename string, endpoint string) (bool, error) {
+// Attachment is an additional file to send alongside the primary resume PDF
+// (currently used for an optional cover letter PDF).
+type Attachment struct {
+	Filename string
+	Content  []byte
+}
+
+// Send posts the tailored resume PDF to Resend as an email attachment, plus
+// any extra attachments (e.g. a cover letter PDF). It returns (false, nil)
+// without making a network call when RESEND_API_KEY or CVX_EMAIL_TO is unset
+// or empty. endpoint == "" defaults to the Resend emails endpoint; a
+// non-empty value is used as-is (for tests).
+func Send(t model.Tailored, pdf []byte, filename string, endpoint string, extra ...Attachment) (bool, error) {
 	apiKey := os.Getenv("RESEND_API_KEY")
 	to := os.Getenv("CVX_EMAIL_TO")
 	if apiKey == "" || to == "" {
@@ -56,14 +64,19 @@ func Send(t model.Tailored, pdf []byte, filename string, endpoint string) (bool,
 		from = defaultFrom
 	}
 
+	attachments := []attachment{
+		{Filename: filename, Content: base64.StdEncoding.EncodeToString(pdf)},
+	}
+	for _, a := range extra {
+		attachments = append(attachments, attachment{Filename: a.Filename, Content: base64.StdEncoding.EncodeToString(a.Content)})
+	}
+
 	reqBody := sendRequest{
-		From:    from,
-		To:      to,
-		Subject: fmt.Sprintf("Resume: %s", t.TargetRole),
-		HTML:    renderHTML(t),
-		Attachments: []attachment{
-			{Filename: filename, Content: base64.StdEncoding.EncodeToString(pdf)},
-		},
+		From:        from,
+		To:          to,
+		Subject:     fmt.Sprintf("Resume: %s", t.TargetRole),
+		HTML:        renderHTML(t),
+		Attachments: attachments,
 	}
 
 	payload, err := json.Marshal(reqBody)

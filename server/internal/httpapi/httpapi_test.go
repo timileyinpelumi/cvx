@@ -27,6 +27,7 @@ import (
 // alternate LLM response shapes (e.g. explicit empty arrays).
 type fakeLLM struct {
 	tailorOut string
+	coverOut  string
 }
 
 const digitizeJSON = `{"name":"Ada","email":"a@e.com","phone":"","location":"","summary":"","links":[],"skills":["Python","Go"],
@@ -44,11 +45,34 @@ const tailorJSONEmptyArrays = `{"targetRole":"Python Backend Engineer","headline
 	"bullets":[{"sourceBulletId":"item-0-b-0","text":"Built the engine in Python"}]}]}],
 	"gaps":[],"whatChanged":[]}`
 
-func (f fakeLLM) GenerateJSON(_ context.Context, _ string, blocks []ai.ContentBlock, _ map[string]any) ([]byte, error) {
+const coverJSON = `{"greeting":"Dear hiring team,","paragraphs":["I am excited to apply for this role.","My experience aligns well with what you need."],"closing":"Sincerely,"}`
+
+// isCoverLetterSchema reports whether schema is the ai package's cover
+// letter schema (shape-tested: its top-level properties include "greeting"),
+// as opposed to the tailor schema. fakeLLM uses this to route calls that
+// don't carry a PDF block (i.e. everything except Digitize) between the
+// tailor and cover-letter fixtures, since GenerateJSON's other parameters
+// don't otherwise distinguish the two calls.
+func isCoverLetterSchema(schema map[string]any) bool {
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return false
+	}
+	_, ok = props["greeting"]
+	return ok
+}
+
+func (f fakeLLM) GenerateJSON(_ context.Context, _ string, blocks []ai.ContentBlock, schema map[string]any) ([]byte, error) {
 	for _, b := range blocks {
 		if b.PDF != nil {
 			return []byte(digitizeJSON), nil
 		}
+	}
+	if isCoverLetterSchema(schema) {
+		if f.coverOut != "" {
+			return []byte(f.coverOut), nil
+		}
+		return []byte(coverJSON), nil
 	}
 	if f.tailorOut != "" {
 		return []byte(f.tailorOut), nil
@@ -71,11 +95,18 @@ func newTestServerWithLLM(t *testing.T, llm ai.LLM) (*Server, *echo.Echo) {
 	s := &Server{
 		Store: newStore(t),
 		LLM:   llm,
-		Mail:  func(model.Tailored, []byte, string) (bool, error) { return false, nil },
+		Mail:  func(model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
 	}
 	e := echo.New()
 	s.Register(e)
 	return s, e
+}
+
+func generateRequestBodyWithCover(role string, cover bool) *http.Request {
+	body, _ := json.Marshal(generateRequest{RoleInput: role, CoverLetter: cover})
+	req := httptest.NewRequest(http.MethodPost, "/api/generate", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	return req
 }
 
 func newTestServer(t *testing.T) (*Server, *echo.Echo) {
@@ -239,7 +270,7 @@ func TestGenerateHappyPathAndPDF(t *testing.T) {
 
 func TestGenerateEmailFailureDoesNotFailRequest(t *testing.T) {
 	s, e := newTestServer(t)
-	s.Mail = func(model.Tailored, []byte, string) (bool, error) {
+	s.Mail = func(model.Tailored, []byte, string, []byte, string) (bool, error) {
 		return false, fmt.Errorf("boom")
 	}
 	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
@@ -385,13 +416,13 @@ func TestGenerationsListNilSlicesSerializeAsEmptyArrays(t *testing.T) {
 	s := &Server{
 		Store: st,
 		LLM:   fakeLLM{},
-		Mail:  func(model.Tailored, []byte, string) (bool, error) { return false, nil },
+		Mail:  func(model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
 	}
 	e := echo.New()
 	s.Register(e)
 
 	ta := model.Tailored{TargetRole: "X", Gaps: nil, WhatChanged: nil}
-	if _, err := st.SaveGeneration(ta, []byte("pdf-bytes"), "x.pdf"); err != nil {
+	if _, err := st.SaveGeneration(ta, []byte("pdf-bytes"), "x.pdf", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -406,5 +437,146 @@ func TestGenerationsListNilSlicesSerializeAsEmptyArrays(t *testing.T) {
 	}
 	if strings.Contains(body, `"gaps":null`) || strings.Contains(body, `"whatChanged":null`) {
 		t.Fatalf("gaps/whatChanged must never be null, got %s", body)
+	}
+}
+
+// TestGenerateWithCoverLetterHappyPath checks that coverLetter:true in the
+// request produces both a resume and a cover letter: the response reports
+// coverLetter=true with a non-empty coverFilename, and the cover download
+// route serves a PDF.
+func TestGenerateWithCoverLetterHappyPath(t *testing.T) {
+	_, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBodyWithCover("Python Backend Engineer", true))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var got generateResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.CoverLetter || got.CoverFilename == "" {
+		t.Fatalf("want cover letter generated, got %+v", got)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations/"+got.ID+"/cover", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	if ct := rec.Header().Get(echo.HeaderContentType); ct != "application/pdf" {
+		t.Fatalf("want application/pdf, got %q", ct)
+	}
+	wantDisp := fmt.Sprintf(`attachment; filename="%s"`, got.CoverFilename)
+	if cd := rec.Header().Get(echo.HeaderContentDisposition); cd != wantDisp {
+		t.Fatalf("got %q want %q", cd, wantDisp)
+	}
+	if rec.Body.Len() == 0 {
+		t.Fatal("empty cover pdf body")
+	}
+}
+
+// TestGenerateWithoutCoverLetterNoCoverRoute checks that a request without
+// coverLetter (the default/backward-compatible shape) reports coverLetter:
+// false with no coverFilename, and the cover download route 404s for that
+// generation id.
+func TestGenerateWithoutCoverLetterNoCoverRoute(t *testing.T) {
+	_, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBody("Python Backend Engineer"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var got generateResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.CoverLetter || got.CoverFilename != "" {
+		t.Fatalf("want no cover letter, got %+v", got)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations/"+got.ID+"/cover", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// coverFailingLLM behaves like the happy-path fakeLLM for digitize/tailor
+// calls but returns an error for the cover-letter-shaped schema, so tests
+// can drive the "cover letter failed" branch in postGenerate without
+// touching the resume path.
+type coverFailingLLM struct{}
+
+func (coverFailingLLM) GenerateJSON(_ context.Context, _ string, blocks []ai.ContentBlock, schema map[string]any) ([]byte, error) {
+	for _, b := range blocks {
+		if b.PDF != nil {
+			return []byte(digitizeJSON), nil
+		}
+	}
+	if isCoverLetterSchema(schema) {
+		return nil, fmt.Errorf("cover letter boom")
+	}
+	return []byte(tailorJSON), nil
+}
+
+// TestGenerateCoverLetterFailureDoesNotFailGenerate checks that when cover
+// letter generation fails, /api/generate still succeeds with the resume:
+// status 200, a valid generation id, coverLetter=false, and no coverFilename.
+func TestGenerateCoverLetterFailureDoesNotFailGenerate(t *testing.T) {
+	_, e := newTestServerWithLLM(t, coverFailingLLM{})
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBodyWithCover("Python Backend Engineer", true))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 despite cover failure, got %d: %s", rec.Code, rec.Body)
+	}
+	var got generateResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.CoverLetter || got.CoverFilename != "" {
+		t.Fatalf("want no cover letter reported on failure, got %+v", got)
+	}
+	if got.ID == "" || got.Filename == "" {
+		t.Fatalf("want resume generation to still succeed, got %+v", got)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations/"+got.ID+"/cover", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for cover pdf after cover failure, got %d", rec.Code)
+	}
+}
+
+// TestGenerateEmailsBothPDFsWhenCoverExists checks that when coverLetter is
+// requested and succeeds, the Mail closure is invoked with both the resume
+// pdf and the cover pdf/filename (non-nil, non-empty) so the wiring in
+// main.go can attach both to the outgoing email.
+func TestGenerateEmailsBothPDFsWhenCoverExists(t *testing.T) {
+	s, e := newTestServer(t)
+	var gotPDF, gotCoverPDF []byte
+	var gotFilename, gotCoverFilename string
+	s.Mail = func(_ model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error) {
+		gotPDF, gotFilename, gotCoverPDF, gotCoverFilename = pdf, filename, coverPDF, coverFilename
+		return true, nil
+	}
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBodyWithCover("Python Backend Engineer", true))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	if len(gotPDF) == 0 || gotFilename == "" {
+		t.Fatalf("want resume pdf/filename passed to Mail, got %d bytes, filename %q", len(gotPDF), gotFilename)
+	}
+	if len(gotCoverPDF) == 0 || gotCoverFilename == "" {
+		t.Fatalf("want cover pdf/filename passed to Mail, got %d bytes, filename %q", len(gotCoverPDF), gotCoverFilename)
 	}
 }
