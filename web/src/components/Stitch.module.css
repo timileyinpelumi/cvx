@@ -1,0 +1,20 @@
+/* The mask line is normalised to pathLength 1, so the draw is width-agnostic.
+   Resting state is offset 0 (fully drawn) so killing the animation reveals it. */
+.draw {
+  animation: draw 400ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .draw {
+    animation: none;
+  }
+}
