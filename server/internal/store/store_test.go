@@ -109,6 +109,105 @@ func TestGenerationsWithCoverLetter(t *testing.T) {
 	}
 }
 
+func TestGapSummaryGroupsCasingFiltersSingletonsAndTracksNewest(t *testing.T) {
+	s := open(t)
+
+	mk := func(gaps ...model.Gap) model.Tailored { return model.Tailored{TargetRole: "X", Gaps: gaps} }
+
+	if _, err := s.SaveGeneration(mk(model.Gap{Requirement: "Django", Evidence: "e1", Severity: "missing"}), []byte("p"), "a.pdf", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, err := s.SaveGeneration(mk(
+		model.Gap{Requirement: "django", Evidence: "e2", Severity: "weak"},
+		model.Gap{Requirement: "Kubernetes", Evidence: "e-k", Severity: "missing"},
+	), []byte("p"), "b.pdf", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, err := s.SaveGeneration(mk(model.Gap{Requirement: "Django", Evidence: "e3-latest", Severity: "missing"}), []byte("p"), "c.pdf", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	trends, total, err := s.GapSummary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 3 {
+		t.Fatalf("want total 3, got %d", total)
+	}
+	// Kubernetes was seen once, so it's filtered as noise; only Django groups.
+	if len(trends) != 1 {
+		t.Fatalf("want 1 trend, got %+v", trends)
+	}
+	tr := trends[0]
+	if tr.Requirement != "Django" {
+		t.Fatalf("want requirement %q, got %q", "Django", tr.Requirement)
+	}
+	if tr.Count != 3 || tr.Missing != 2 || tr.Weak != 1 {
+		t.Fatalf("want count 3 missing 2 weak 1, got %+v", tr)
+	}
+	if tr.LastEvidence != "e3-latest" {
+		t.Fatalf("want lastEvidence from newest generation, got %q", tr.LastEvidence)
+	}
+}
+
+func TestGapSummaryOrdering(t *testing.T) {
+	s := open(t)
+
+	mk := func(gaps ...model.Gap) model.Tailored { return model.Tailored{TargetRole: "X", Gaps: gaps} }
+
+	// "Zeta" appears 3 times, "Alpha" appears 3 times (ties go alphabetical),
+	// "Beta" appears 2 times: expect order Alpha, Zeta, Beta.
+	for i := 0; i < 3; i++ {
+		if _, err := s.SaveGeneration(mk(model.Gap{Requirement: "Zeta", Evidence: "e", Severity: "missing"}), []byte("p"), "z.pdf", nil, ""); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := s.SaveGeneration(mk(model.Gap{Requirement: "Alpha", Evidence: "e", Severity: "missing"}), []byte("p"), "a.pdf", nil, ""); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := s.SaveGeneration(mk(model.Gap{Requirement: "Beta", Evidence: "e", Severity: "weak"}), []byte("p"), "b.pdf", nil, ""); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	trends, total, err := s.GapSummary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 8 {
+		t.Fatalf("want total 8, got %d", total)
+	}
+	if len(trends) != 3 {
+		t.Fatalf("want 3 trends, got %+v", trends)
+	}
+	got := []string{trends[0].Requirement, trends[1].Requirement, trends[2].Requirement}
+	want := []string{"Alpha", "Zeta", "Beta"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("want order %v, got %v", want, got)
+		}
+	}
+}
+
+func TestGapSummaryNoGenerations(t *testing.T) {
+	s := open(t)
+	trends, total, err := s.GapSummary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 0 || len(trends) != 0 {
+		t.Fatalf("want 0,0, got %d,%+v", total, trends)
+	}
+}
+
 // v1Schema is the original (pre-cover-letter) schema, captured verbatim so
 // TestMigrationAddsCoverColumnsIdempotently can build a DB file that predates
 // the cover_pdf/cover_filename columns, the way any real v1 install's

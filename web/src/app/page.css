@@ -702,3 +702,72 @@
     margin-top: 64px;
   }
 }
+
+/* --------------------------------------------------------- gap tracker -- */
+
+.gap-tracker {
+  margin-top: 48px;
+}
+
+.gap-tracker-list {
+  margin-top: 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.gap-tracker-row {
+  padding: 8px 0;
+}
+
+.gap-tracker-row + .gap-tracker-row {
+  border-top: 1px solid var(--edge);
+}
+
+/* Requirement above the count line on mobile, matching .archive-meta's
+   stacking; side by side with the count right-aligned from 481px. */
+.gap-tracker-top {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gap-tracker-requirement {
+  font-weight: 500;
+  overflow-wrap: break-word;
+}
+
+.gap-tracker-count {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.gap-tracker-count--missing {
+  color: var(--gap-missing);
+}
+
+.gap-tracker-count--weak {
+  color: var(--gap-weak);
+}
+
+.gap-tracker-evidence {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: break-word;
+}
+
+@media (min-width: 481px) {
+  .gap-tracker-top {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 24px;
+  }
+}
+
+@media (min-width: 768px) {
+  .gap-tracker {
+    margin-top: 64px;
+  }
+}

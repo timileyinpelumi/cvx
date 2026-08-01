@@ -440,6 +440,67 @@ func TestGenerationsListNilSlicesSerializeAsEmptyArrays(t *testing.T) {
 	}
 }
 
+func TestGapsEndpointShape(t *testing.T) {
+	st := newStore(t)
+	s := &Server{
+		Store: st,
+		LLM:   fakeLLM{},
+		Mail:  func(model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+	}
+	e := echo.New()
+	s.Register(e)
+
+	mk := func(gaps ...model.Gap) model.Tailored { return model.Tailored{TargetRole: "X", Gaps: gaps} }
+	if _, err := st.SaveGeneration(mk(model.Gap{Requirement: "Django", Evidence: "e1", Severity: "missing"}), []byte("p"), "a.pdf", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SaveGeneration(mk(model.Gap{Requirement: "django", Evidence: "e2", Severity: "missing"}), []byte("p"), "b.pdf", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/gaps", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		Total  int `json:"total"`
+		Trends []struct {
+			Requirement  string `json:"requirement"`
+			Count        int    `json:"count"`
+			Missing      int    `json:"missing"`
+			Weak         int    `json:"weak"`
+			LastEvidence string `json:"lastEvidence"`
+		} `json:"trends"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Total != 2 || len(got.Trends) != 1 {
+		t.Fatalf("want total 2, 1 trend, got %+v", got)
+	}
+	if got.Trends[0].Count != 2 || got.Trends[0].Missing != 2 {
+		t.Fatalf("want count 2 missing 2, got %+v", got.Trends[0])
+	}
+}
+
+func TestGapsEndpointEmptyTrendsIsArrayNotNull(t *testing.T) {
+	_, e := newTestServer(t)
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/gaps", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"trends":[]`) {
+		t.Fatalf("want trends:[], got %s", body)
+	}
+	if strings.Contains(body, `"trends":null`) {
+		t.Fatalf("trends must never be null, got %s", body)
+	}
+}
+
 // TestGenerateWithCoverLetterHappyPath checks that coverLetter:true in the
 // request produces both a resume and a cover letter: the response reports
 // coverLetter=true with a non-empty coverFilename, and the cover download

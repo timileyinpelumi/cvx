@@ -38,6 +38,7 @@ func (s *Server) Register(e *echo.Echo) {
 	e.POST("/api/profile", s.postProfile)
 	e.POST("/api/generate", s.postGenerate)
 	e.GET("/api/generations", s.listGenerations)
+	e.GET("/api/gaps", s.getGaps)
 	e.GET("/api/generations/:id/pdf", s.getGenerationPDF)
 	e.GET("/api/generations/:id/cover", s.getGenerationCoverPDF)
 }
@@ -212,6 +213,20 @@ func (s *Server) listGenerations(c echo.Context) error {
 		list = []store.GenerationMeta{}
 	}
 	return c.JSON(http.StatusOK, list)
+}
+
+type gapsResponse struct {
+	Total  int              `json:"total"`
+	Trends []store.GapTrend `json:"trends"`
+}
+
+func (s *Server) getGaps(c echo.Context) error {
+	trends, total, err := s.Store.GapSummary()
+	if err != nil {
+		slog.Error("gap summary failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(http.StatusOK, gapsResponse{Total: total, Trends: model.NonNil(trends)})
 }
 
 func (s *Server) getGenerationPDF(c echo.Context) error {

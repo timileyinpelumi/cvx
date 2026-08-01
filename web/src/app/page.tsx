@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { Archive, type GenerationMeta } from "@/components/Archive";
+import { GapTracker, type GapTrend } from "@/components/GapTracker";
 import { Generator } from "@/components/Generator";
 import { Logo } from "@/components/Logo";
 import { Stitch } from "@/components/Stitch";
@@ -16,6 +17,8 @@ export default function Home() {
   const [profile, setProfile] = useState<ProfileSummary | null>(null);
   const [generations, setGenerations] = useState<GenerationMeta[]>([]);
   const [result, setResult] = useState<GenerateResult | null>(null);
+  const [gapTrends, setGapTrends] = useState<GapTrend[]>([]);
+  const [gapTotal, setGapTotal] = useState(0);
 
   const loadGenerations = useCallback(async () => {
     try {
@@ -27,6 +30,18 @@ export default function Home() {
     }
   }, []);
 
+  const loadGaps = useCallback(async () => {
+    try {
+      const res = await fetch("/api/gaps");
+      if (!res.ok) return;
+      const data = (await res.json()) as { total: number; trends: GapTrend[] };
+      setGapTotal(data.total);
+      setGapTrends(data.trends);
+    } catch {
+      // The gap tracker is supplementary; a failed load just leaves it hidden.
+    }
+  }, []);
+
   useEffect(() => {
     async function load() {
       const [summary] = await Promise.all([
@@ -35,16 +50,18 @@ export default function Home() {
           // A failed load is treated as "no profile yet": upload state shows.
           .catch(() => null),
         loadGenerations(),
+        loadGaps(),
       ]);
       if (summary) setProfile(summary);
       setLoaded(true);
     }
     void load();
-  }, [loadGenerations]);
+  }, [loadGenerations, loadGaps]);
 
   function handleResult(next: GenerateResult) {
     setResult(next);
     void loadGenerations();
+    void loadGaps();
   }
 
   const earlier = generations.filter((row) => row.id !== result?.id);
@@ -81,6 +98,7 @@ export default function Home() {
       </main>
 
       <Archive rows={earlier} />
+      <GapTracker trends={gapTrends} total={gapTotal} />
     </div>
   );
 }

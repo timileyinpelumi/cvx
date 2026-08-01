@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -31,6 +32,16 @@ type GenerationMeta struct {
 	Gaps           []model.Gap `json:"gaps"`
 	WhatChanged    []string    `json:"whatChanged"`
 	HasCoverLetter bool        `json:"hasCoverLetter"`
+}
+
+// GapTrend is one requirement that has come up as a gap across two or more
+// generations, aggregated from every generation's tailored_json.
+type GapTrend struct {
+	Requirement  string `json:"requirement"`
+	Count        int    `json:"count"`
+	Missing      int    `json:"missing"`
+	Weak         int    `json:"weak"`
+	LastEvidence string `json:"lastEvidence"`
 }
 
 // Open opens the SQLite database at path, applies the schema migration, and
@@ -236,4 +247,102 @@ func (s *Store) GetGenerationCoverPDF(id string) (pdf []byte, filename string, e
 		return nil, "", nil
 	}
 	return coverPDF, coverFilename.String, nil
+}
+
+var innerWhitespace = regexp.MustCompile(`\s+`)
+
+// normalizeRequirement is the grouping key for a gap requirement: lowercase,
+// trimmed, with runs of inner whitespace collapsed to one space, so gaps
+// that differ only in casing or incidental spacing (e.g. "Django" vs
+// "django" vs "  Django ") are counted as the same recurring gap.
+func normalizeRequirement(s string) string {
+	return innerWhitespace.ReplaceAllString(strings.ToLower(strings.TrimSpace(s)), " ")
+}
+
+// GapSummary aggregates gaps across every stored generation's tailored_json,
+// grouped by normalized requirement. It returns the total number of
+// generations on record and one GapTrend per requirement that has come up
+// as a gap at least twice (a single occurrence is noise, not a trend),
+// sorted by Count descending then Requirement ascending. Requirement and
+// LastEvidence are taken from the most recent generation in each group.
+func (s *Store) GapSummary() ([]GapTrend, int, error) {
+	rows, err := s.db.Query(`SELECT tailored_json FROM generations ORDER BY id ASC`)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	type group struct {
+		requirement  string
+		count        int
+		missing      int
+		weak         int
+		lastEvidence string
+	}
+	groups := map[string]*group{}
+	var order []string
+	total := 0
+
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, 0, err
+		}
+		total++
+
+		var t model.Tailored
+		if err := json.Unmarshal([]byte(raw), &t); err != nil {
+			return nil, 0, err
+		}
+		for _, g := range t.Gaps {
+			key := normalizeRequirement(g.Requirement)
+			if key == "" {
+				continue
+			}
+			gr, ok := groups[key]
+			if !ok {
+				gr = &group{}
+				groups[key] = gr
+				order = append(order, key)
+			}
+			gr.count++
+			switch g.Severity {
+			case "missing":
+				gr.missing++
+			case "weak":
+				gr.weak++
+			}
+			// Iterating oldest to newest, so the last write for this key
+			// leaves the requirement casing and evidence from the newest
+			// generation that raised it.
+			gr.requirement = g.Requirement
+			gr.lastEvidence = g.Evidence
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	var out []GapTrend
+	for _, key := range order {
+		gr := groups[key]
+		if gr.count < 2 {
+			continue
+		}
+		out = append(out, GapTrend{
+			Requirement:  gr.requirement,
+			Count:        gr.count,
+			Missing:      gr.missing,
+			Weak:         gr.weak,
+			LastEvidence: gr.lastEvidence,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Requirement < out[j].Requirement
+	})
+
+	return out, total, nil
 }
