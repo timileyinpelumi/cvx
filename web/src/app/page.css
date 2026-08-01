@@ -92,6 +92,18 @@
   cursor: default;
 }
 
+.btn--secondary {
+  background: var(--card);
+  border: 1px solid var(--edge);
+  color: var(--ink);
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.btn--secondary:hover {
+  border-color: color-mix(in srgb, var(--edge) 55%, var(--muted));
+  background: color-mix(in srgb, var(--edge) 20%, var(--card));
+}
+
 .btn--block {
   width: 100%;
 }
@@ -264,8 +276,82 @@
   -webkit-text-fill-color: var(--muted);
 }
 
+/* The native checkbox is kept and only its box is restyled, so the label,
+   keyboard behaviour and focus ring all come from the browser. */
+.option-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  margin-top: 8px;
+  cursor: pointer;
+}
+
+.option-box {
+  display: grid;
+  place-content: center;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  appearance: none;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.option-row:hover .option-box {
+  border-color: color-mix(in srgb, var(--edge) 55%, var(--muted));
+}
+
+.option-box:checked,
+.option-row:hover .option-box:checked {
+  background: var(--chalk);
+  border-color: var(--chalk);
+}
+
+/* The tick is two borders rather than an icon so it scales with the box. */
+.option-box::after {
+  content: "";
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+  opacity: 0;
+}
+
+.option-box:checked::after {
+  opacity: 1;
+}
+
+.option-row:has(.option-box:disabled) {
+  color: var(--muted);
+  cursor: default;
+}
+
+.option-box:disabled {
+  background: color-mix(in srgb, var(--edge) 30%, var(--card));
+  cursor: default;
+}
+
+.option-box:disabled:checked {
+  background: color-mix(in srgb, var(--chalk) 35%, var(--card));
+  border-color: transparent;
+}
+
+.option-label {
+  font-size: 14px;
+  user-select: none;
+}
+
 .composer-actions {
   margin-top: 16px;
+}
+
+.option-row + .composer-actions {
+  margin-top: 8px;
 }
 
 @media (min-width: 481px) {
@@ -278,6 +364,12 @@
   /* Holds its box when the label swaps to "Tailoring". */
   .composer-actions .btn {
     min-width: 152px;
+  }
+}
+
+@media (min-width: 768px) {
+  .option-row {
+    min-height: 36px;
   }
 }
 
@@ -327,6 +419,14 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 12px;
+}
+
+.result-tag-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
 }
 
 .result-file {
@@ -431,9 +531,24 @@
     gap: 16px;
   }
 
+  /* Two actions leave too little room beside the filename, so that pairing
+     keeps the mobile stack: filename above, actions below. */
+  .result-tag-head:has(.btn--secondary) {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .result-file {
     flex: 1 1 auto;
     min-width: 0;
+  }
+
+  .result-tag-actions {
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    width: auto;
   }
 
   .result-tag-head .btn {
@@ -473,11 +588,9 @@
 }
 
 .archive-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
   align-items: center;
-  column-gap: 16px;
-  row-gap: 4px;
+  gap: 16px;
   padding: 8px 0;
 }
 
@@ -485,28 +598,37 @@
   border-top: 1px solid var(--edge);
 }
 
+/* Role over date on mobile, side by side from 481px. */
+.archive-meta {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
 .archive-role {
-  grid-column: 1;
-  grid-row: 1;
   font-weight: 500;
   overflow-wrap: break-word;
 }
 
 .archive-date {
-  grid-column: 1;
-  grid-row: 2;
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--muted);
 }
 
+.archive-links {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
 .archive-link {
   display: inline-flex;
-  grid-column: 2;
-  grid-row: 1 / span 2;
   align-items: center;
   min-height: 44px;
-  padding-left: 12px;
   color: var(--chalk);
   font-weight: 500;
 }
@@ -518,21 +640,60 @@
 
 @media (min-width: 481px) {
   .archive-row {
-    grid-template-columns: 1fr auto auto;
+    flex-wrap: wrap;
     column-gap: 24px;
+    row-gap: 8px;
     padding: 4px 0;
   }
 
+  .archive-meta {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    /* Wide enough that a second link wraps to its own line instead of
+       squeezing the role. */
+    min-width: 260px;
+    gap: 24px;
+  }
+
+  .archive-links {
+    flex-direction: row;
+    align-items: center;
+    margin-left: auto;
+    gap: 24px;
+  }
+}
+
+@media (min-width: 768px) {
+  /* One grid for the whole list so role, date and links line up across rows
+     even when only some rows carry a cover letter. */
+  .archive-list {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+  }
+
+  .archive-row {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    /* Column spacing is padding rather than a gap so the cover letter column
+       takes no room at all in a list that has none. */
+    column-gap: 0;
+  }
+
+  .archive-meta,
+  .archive-links {
+    display: contents;
+  }
+
   .archive-date {
-    grid-column: 2;
-    grid-row: 1;
     justify-self: end;
+    padding-left: 24px;
   }
 
   .archive-link {
-    grid-column: 3;
-    grid-row: 1;
-    padding-left: 0;
+    padding-left: 24px;
   }
 }
 

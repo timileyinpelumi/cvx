@@ -7,6 +7,7 @@ export type GenerationMeta = {
   createdAt: string;
   gaps: unknown[];
   whatChanged: string[];
+  hasCoverLetter: boolean;
 };
 
 type ArchiveProps = {
@@ -33,20 +34,34 @@ export function Archive({ rows }: ArchiveProps) {
       <ul className="archive-list">
         {rows.map((row) => (
           <li key={row.id} className="archive-row">
-            <span className="archive-role">{row.targetRole}</span>
-            <time className="archive-date" dateTime={row.createdAt}>
-              {formatDate(row.createdAt)}
-            </time>
-            <a
-              className="archive-link"
-              href={`/api/generations/${encodeURIComponent(row.id)}/pdf`}
-              // Every row's link reads "Download"; the role disambiguates them
-              // for anyone tabbing or listing links.
-              aria-label={`Download ${row.targetRole}`}
-              download
-            >
-              Download
-            </a>
+            <span className="archive-meta">
+              <span className="archive-role">{row.targetRole}</span>
+              <time className="archive-date" dateTime={row.createdAt}>
+                {formatDate(row.createdAt)}
+              </time>
+            </span>
+            <span className="archive-links">
+              <a
+                className="archive-link"
+                href={`/api/generations/${encodeURIComponent(row.id)}/pdf`}
+                // Every row's link reads "Download"; the role disambiguates them
+                // for anyone tabbing or listing links.
+                aria-label={`Download ${row.targetRole}`}
+                download
+              >
+                Download
+              </a>
+              {row.hasCoverLetter ? (
+                <a
+                  className="archive-link"
+                  href={`/api/generations/${encodeURIComponent(row.id)}/cover`}
+                  aria-label={`Download cover letter for ${row.targetRole}`}
+                  download
+                >
+                  Download cover letter
+                </a>
+              ) : null}
+            </span>
           </li>
         ))}
       </ul>

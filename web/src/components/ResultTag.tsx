@@ -16,6 +16,7 @@ export type GenerateResult = {
   gaps: Gap[];
   whatChanged: string[];
   emailed: boolean;
+  coverLetter: boolean;
 };
 
 type ResultTagProps = {
@@ -37,14 +38,28 @@ export function ResultTag({ result, pending = false }: ResultTagProps) {
               <span className="result-file" title={result.filename}>
                 {result.filename}
               </span>
-              <a
-                className="btn btn--primary btn--block"
-                href={`/api/generations/${encodeURIComponent(result.id)}/pdf`}
-                download
-              >
-                <Download size={16} aria-hidden="true" />
-                Download PDF
-              </a>
+              <div className="result-tag-actions">
+                <a
+                  className="btn btn--primary btn--block"
+                  href={`/api/generations/${encodeURIComponent(result.id)}/pdf`}
+                  download
+                >
+                  <Download size={16} aria-hidden="true" />
+                  Download PDF
+                </a>
+                {result.coverLetter ? (
+                  <a
+                    className="btn btn--secondary btn--block"
+                    href={`/api/generations/${encodeURIComponent(
+                      result.id,
+                    )}/cover`}
+                    download
+                  >
+                    <Download size={16} aria-hidden="true" />
+                    Download cover letter
+                  </a>
+                ) : null}
+              </div>
             </div>
 
             {result.emailed ? (

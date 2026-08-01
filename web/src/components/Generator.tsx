@@ -15,6 +15,7 @@ type GeneratorProps = {
 export function Generator({ result, onResult }: GeneratorProps) {
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const [roleInput, setRoleInput] = useState("");
+  const [coverLetter, setCoverLetter] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
@@ -49,7 +50,7 @@ export function Generator({ result, onResult }: GeneratorProps) {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roleInput }),
+        body: JSON.stringify({ roleInput, coverLetter }),
       });
       if (!res.ok) {
         let detail = "";
@@ -83,6 +84,17 @@ export function Generator({ result, onResult }: GeneratorProps) {
         disabled={busy}
         onChange={(event) => setRoleInput(event.target.value)}
       />
+
+      <label className="option-row">
+        <input
+          type="checkbox"
+          className="option-box"
+          checked={coverLetter}
+          disabled={busy}
+          onChange={(event) => setCoverLetter(event.target.checked)}
+        />
+        <span className="option-label">Also write a cover letter</span>
+      </label>
 
       <div className="composer-actions">
         <button
