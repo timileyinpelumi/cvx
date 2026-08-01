@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/go-pdf/fpdf"
+
 	"cvx/internal/model"
 )
 
@@ -83,31 +85,99 @@ func TestRenderEmptySections(t *testing.T) {
 	}
 }
 
-// TestRenderLongTitleWraps guards against the title cell overlapping the
-// right-aligned date column: a "Title — Org" combo wider than the space left
-// of the date column (~150mm vs a ~146mm budget on this fixture) must wrap
-// via MultiCell instead of running through the dates.
+// longTitle/longOrg combine to ~206mm, well past the ~152mm titleWidth
+// budget on the A4/18mm-margin layout (verified: budget is usableWidth minus
+// the "2021 – Present"-sized date column, ~151.64mm here), so they reliably
+// exercise the wrap branch in renderItem rather than fitting on one line.
+const (
+	longTitle = "Director of Engineering, Distributed Systems and Cloud Platform Architecture"
+	longOrg   = "Global Technology Solutions International Incorporated"
+)
+
+// TestRenderLongTitleWraps is an end-to-end smoke test: a "Title — Org" combo
+// wider than the space left of the date column must render without error
+// instead of erroring out or corrupting the document.
 func TestRenderLongTitleWraps(t *testing.T) {
-	p, base := fixture()
-	baseBytes, err := Render(p, base)
+	p, ta := fixture()
+	ta.Sections[0].Items[0].Title = longTitle
+	ta.Sections[0].Items[0].Organization = longOrg
+
+	b, err := Render(p, ta)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !bytes.HasPrefix(b, []byte("%PDF")) || len(b) < 1000 {
+		t.Fatalf("bad pdf: %d bytes", len(b))
+	}
+}
 
-	_, ta := fixture()
-	ta.Sections[0].Items[0].Title = "Director of Engineering, Distributed Systems and Cloud Platform"
-	ta.Sections[0].Items[0].Organization = "Global Technology Solutions Inc"
+// TestTitleNeedsWrap directly unit-tests the wrap-decision helper against the
+// exact strings used by TestRenderLongTitleWraps / TestRenderItemWrapsLongTitle,
+// confirming the long combo is actually over budget and the short one isn't.
+func TestTitleNeedsWrap(t *testing.T) {
+	pdf := newTestPDF()
+	pdf.SetFont(fontFamily, "B", itemSize)
 
-	longBytes, err := Render(p, ta)
-	if err != nil {
+	const titleWidth = 151.64 // usableWidth minus a "2021 – Present" date column, per production math
+
+	short := "Engineer — Analytical Engines Co"
+	long := longTitle + " — " + longOrg
+
+	if titleNeedsWrap(pdf, short, titleWidth) {
+		t.Fatalf("expected short title to fit within %.2fmm", titleWidth)
+	}
+	if !titleNeedsWrap(pdf, long, titleWidth) {
+		t.Fatalf("expected long title to exceed %.2fmm (got width %.2fmm)", titleWidth, pdf.GetStringWidth(long))
+	}
+}
+
+// TestRenderItemWrapsLongTitle is the regression guard: it calls renderItem
+// directly (white-box, same package) and measures how far it advances the
+// cursor. A wrapped 2-line title must consume noticeably more vertical space
+// than a single-line title renders in — if the wrap branch in renderItem were
+// deleted (reverting to a single CellFormat that just overflows into the date
+// column), the long-title item would advance the cursor by exactly one line,
+// same as the short-title item, and this test would fail. Verified manually:
+// see task-5-report.md "delete-branch-verify" note.
+func TestRenderItemWrapsLongTitle(t *testing.T) {
+	shortItem := model.TItem{Title: "Engineer", Organization: "Analytical Engines Co", Dates: "2021 – Present"}
+	longItem := model.TItem{Title: longTitle, Organization: longOrg, Dates: "2021 – Present"}
+
+	shortPDF := newTestPDF()
+	y0 := shortPDF.GetY()
+	renderItem(shortPDF, shortItem)
+	if err := shortPDF.Error(); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.HasPrefix(longBytes, []byte("%PDF")) || len(longBytes) < 1000 {
-		t.Fatalf("bad pdf: %d bytes", len(longBytes))
+	shortDelta := shortPDF.GetY() - y0
+
+	longPDF := newTestPDF()
+	y1 := longPDF.GetY()
+	renderItem(longPDF, longItem)
+	if err := longPDF.Error(); err != nil {
+		t.Fatal(err)
 	}
-	// The wrapped title adds a second line of content that the single-line
-	// baseline doesn't have, so the encoded output should grow.
-	if len(longBytes) <= len(baseBytes) {
-		t.Fatalf("expected wrapped long-title pdf to be larger than baseline: long=%d base=%d", len(longBytes), len(baseBytes))
+	longDelta := longPDF.GetY() - y1
+
+	singleLine := lineHeight(itemSize)
+
+	if longDelta <= shortDelta {
+		t.Fatalf("expected long-title item to consume more vertical space than short-title item: long=%.2fmm short=%.2fmm", longDelta, shortDelta)
 	}
+	if longDelta < 2*singleLine {
+		t.Fatalf("expected long title to wrap to at least 2 lines: consumed %.2fmm, single line=%.2fmm", longDelta, singleLine)
+	}
+}
+
+// newTestPDF builds an Fpdf with the same margins/fonts as Render, positioned
+// on a fresh page, for tests that exercise unexported render functions
+// directly instead of going through Render.
+func newTestPDF() *fpdf.Fpdf {
+	pdf := fpdf.New("P", "mm", "A4", "")
+	pdf.SetMargins(marginSide, marginTop, marginSide)
+	pdf.SetAutoPageBreak(true, marginBottom)
+	pdf.AddUTF8FontFromBytes(fontFamily, "", regularFont)
+	pdf.AddUTF8FontFromBytes(fontFamily, "B", semiboldFont)
+	pdf.AddPage()
+	return pdf
 }

@@ -193,6 +193,13 @@ func ensureRoomForSectionTitle(pdf *fpdf.Fpdf) {
 	}
 }
 
+// titleNeedsWrap reports whether title (rendered in the currently-set font)
+// is too wide to fit in titleWidth on a single line, i.e. whether it would
+// bleed into the date column if drawn with a plain CellFormat.
+func titleNeedsWrap(pdf *fpdf.Fpdf, title string, titleWidth float64) bool {
+	return pdf.GetStringWidth(title) > titleWidth
+}
+
 func renderItem(pdf *fpdf.Fpdf, it model.TItem) {
 	w := usableWidth(pdf)
 
@@ -212,7 +219,7 @@ func renderItem(pdf *fpdf.Fpdf, it model.TItem) {
 	pdf.SetTextColor(0, 0, 0)
 	pdf.SetFont(fontFamily, "B", itemSize)
 
-	if pdf.GetStringWidth(title) > titleWidth {
+	if titleNeedsWrap(pdf, title, titleWidth) {
 		// Title too wide for the space left of the date column: wrap it
 		// within titleWidth (held constant across wrapped lines) via
 		// MultiCell so it can never bleed into the date column, and place
