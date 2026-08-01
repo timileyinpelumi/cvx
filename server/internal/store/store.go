@@ -23,12 +23,12 @@ CREATE TABLE IF NOT EXISTS generations (
 type Store struct{ db *sql.DB }
 
 type GenerationMeta struct {
-	ID          string
-	TargetRole  string
-	Filename    string
-	CreatedAt   string
-	Gaps        []model.Gap
-	WhatChanged []string
+	ID          string      `json:"id"`
+	TargetRole  string      `json:"targetRole"`
+	Filename    string      `json:"filename"`
+	CreatedAt   string      `json:"createdAt"`
+	Gaps        []model.Gap `json:"gaps"`
+	WhatChanged []string    `json:"whatChanged"`
 }
 
 // Open opens the SQLite database at path and applies the schema migration.
