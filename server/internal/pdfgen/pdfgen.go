@@ -36,6 +36,7 @@ const (
 	itemSize     = 10.0
 	dateSize     = 9.5
 	bulletSize   = 9.5
+	skillsSize   = 9.5
 )
 
 const lineHeightFactor = 1.35
@@ -80,6 +81,7 @@ func Render(p model.Profile, t model.Tailored) ([]byte, error) {
 	pdf.AddPage()
 
 	renderHeader(pdf, p, t)
+	renderSkillsSection(pdf, t.SelectedSkills)
 	for _, section := range t.Sections {
 		renderSection(pdf, section)
 	}
@@ -154,7 +156,11 @@ func contactLine(p model.Profile) string {
 	return strings.Join(parts, "  ·  ")
 }
 
-func renderSection(pdf *fpdf.Fpdf, s model.TSection) {
+// renderSectionTitle draws a section title (10pt SemiBold, uppercase) with
+// the 0.2mm 60%-gray rule beneath it, leaving the cursor positioned for the
+// section body. Shared by renderSection and renderSkillsSection so both
+// section kinds render the exact same title style.
+func renderSectionTitle(pdf *fpdf.Fpdf, title string) {
 	ensureRoomForSectionTitle(pdf)
 
 	pdf.Ln(gapBeforeSection)
@@ -162,7 +168,7 @@ func renderSection(pdf *fpdf.Fpdf, s model.TSection) {
 
 	pdf.SetTextColor(0, 0, 0)
 	pdf.SetFont(fontFamily, "B", sectionSize)
-	pdf.CellFormat(w, lineHeight(sectionSize), strings.ToUpper(s.Title), "", 1, "L", false, 0, "")
+	pdf.CellFormat(w, lineHeight(sectionSize), strings.ToUpper(title), "", 1, "L", false, 0, "")
 
 	pdf.Ln(ruleGap)
 	gray := grayComponent()
@@ -172,6 +178,10 @@ func renderSection(pdf *fpdf.Fpdf, s model.TSection) {
 	y := pdf.GetY()
 	pdf.Line(left, y, left+w, y)
 	pdf.Ln(ruleToBody)
+}
+
+func renderSection(pdf *fpdf.Fpdf, s model.TSection) {
+	renderSectionTitle(pdf, s.Title)
 
 	for i, item := range s.Items {
 		if i > 0 {
@@ -179,6 +189,22 @@ func renderSection(pdf *fpdf.Fpdf, s model.TSection) {
 		}
 		renderItem(pdf, item)
 	}
+}
+
+// renderSkillsSection renders the AI-selected skills as a single wrapped
+// line under a "Skills" section title, matching the section-title style used
+// elsewhere. It is a no-op when skills is empty so tailored output with no
+// selected skills doesn't grow an empty section.
+func renderSkillsSection(pdf *fpdf.Fpdf, skills []string) {
+	if len(skills) == 0 {
+		return
+	}
+	renderSectionTitle(pdf, "Skills")
+
+	w := usableWidth(pdf)
+	pdf.SetFont(fontFamily, "", skillsSize)
+	pdf.SetTextColor(0, 0, 0)
+	pdf.MultiCell(w, lineHeight(skillsSize), strings.Join(skills, "  ·  "), "", "L", false)
 }
 
 // ensureRoomForSectionTitle breaks to a new page before a section title if

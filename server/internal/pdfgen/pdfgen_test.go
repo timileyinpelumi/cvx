@@ -169,6 +169,39 @@ func TestRenderItemWrapsLongTitle(t *testing.T) {
 	}
 }
 
+// TestRenderSelectedSkills is the regression guard for the Skills section:
+// tailored output with SelectedSkills set must render a larger document than
+// the same output with SelectedSkills cleared, proving the section (and its
+// joined "  ·  " line) is actually emitted rather than silently dropped.
+func TestRenderSelectedSkills(t *testing.T) {
+	p, ta := fixture()
+	ta.SelectedSkills = []string{"Python", "Distributed Systems", "PostgreSQL"}
+
+	withSkills, err := Render(p, ta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(withSkills, []byte("%PDF")) || len(withSkills) < 1000 {
+		t.Fatalf("bad pdf: %d bytes", len(withSkills))
+	}
+
+	ta.SelectedSkills = nil
+	withoutSkills, err := Render(p, ta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(withoutSkills, []byte("%PDF")) || len(withoutSkills) < 1000 {
+		t.Fatalf("bad pdf: %d bytes", len(withoutSkills))
+	}
+
+	if bytes.Equal(withSkills, withoutSkills) {
+		t.Fatal("expected rendering with SelectedSkills to differ from rendering without")
+	}
+	if len(withSkills) <= len(withoutSkills) {
+		t.Fatalf("expected pdf with SelectedSkills to be larger: with=%d without=%d", len(withSkills), len(withoutSkills))
+	}
+}
+
 // newTestPDF builds an Fpdf with the same margins/fonts as Render, positioned
 // on a fresh page, for tests that exercise unexported render functions
 // directly instead of going through Render.
