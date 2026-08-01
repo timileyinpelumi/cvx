@@ -106,8 +106,8 @@ func (s *Store) SaveGeneration(t model.Tailored, pdf []byte, filename string) (G
 		TargetRole:  t.TargetRole,
 		Filename:    filename,
 		CreatedAt:   createdAt,
-		Gaps:        t.Gaps,
-		WhatChanged: t.WhatChanged,
+		Gaps:        model.NonNil(t.Gaps),
+		WhatChanged: model.NonNil(t.WhatChanged),
 	}, nil
 }
 
@@ -131,8 +131,8 @@ func (s *Store) ListGenerations() ([]GenerationMeta, error) {
 		if err := json.Unmarshal([]byte(raw), &t); err != nil {
 			return nil, err
 		}
-		m.Gaps = t.Gaps
-		m.WhatChanged = t.WhatChanged
+		m.Gaps = model.NonNil(t.Gaps)
+		m.WhatChanged = model.NonNil(t.WhatChanged)
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {

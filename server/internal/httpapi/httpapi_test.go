@@ -23,7 +23,11 @@ import (
 // canned tailor response otherwise. The tailor fixture cites item-0 /
 // item-0-b-0, matching the ids model.AssignIDs deterministically assigns to
 // the single item in the digitize fixture, so model.ValidateTailored passes.
-type fakeLLM struct{}
+// tailorOut overrides the default tailor JSON when set, so tests can probe
+// alternate LLM response shapes (e.g. explicit empty arrays).
+type fakeLLM struct {
+	tailorOut string
+}
 
 const digitizeJSON = `{"name":"Ada","email":"a@e.com","phone":"","location":"","summary":"","links":[],"skills":["Python","Go"],
 	"items":[{"kind":"experience","title":"Engineer","organization":"AE","startDate":"2021-01","endDate":"","bullets":[{"text":"Built engine","skills":["Python"]}]}]}`
@@ -33,31 +37,50 @@ const tailorJSON = `{"targetRole":"Python Backend Engineer","headline":"h","summ
 	"bullets":[{"sourceBulletId":"item-0-b-0","text":"Built the engine in Python"}]}]}],
 	"gaps":[{"requirement":"Django","evidence":"not in profile","severity":"missing"}],"whatChanged":["led with Python"]}`
 
-func (fakeLLM) GenerateJSON(_ context.Context, _ string, blocks []ai.ContentBlock, _ map[string]any) ([]byte, error) {
+// tailorJSONEmptyArrays mirrors tailorJSON but with gaps/whatChanged as
+// explicit empty JSON arrays, to check they round-trip as [] (not null).
+const tailorJSONEmptyArrays = `{"targetRole":"Python Backend Engineer","headline":"h","summary":"s","selectedSkills":["Python"],
+	"sections":[{"title":"Experience","items":[{"sourceId":"item-0","title":"Engineer","organization":"AE","dates":"2021 - Present",
+	"bullets":[{"sourceBulletId":"item-0-b-0","text":"Built the engine in Python"}]}]}],
+	"gaps":[],"whatChanged":[]}`
+
+func (f fakeLLM) GenerateJSON(_ context.Context, _ string, blocks []ai.ContentBlock, _ map[string]any) ([]byte, error) {
 	for _, b := range blocks {
 		if b.PDF != nil {
 			return []byte(digitizeJSON), nil
 		}
 	}
+	if f.tailorOut != "" {
+		return []byte(f.tailorOut), nil
+	}
 	return []byte(tailorJSON), nil
 }
 
-func newTestServer(t *testing.T) (*Server, *echo.Echo) {
+func newStore(t *testing.T) *store.Store {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "cvx.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
+	return st
+}
 
+func newTestServerWithLLM(t *testing.T, llm ai.LLM) (*Server, *echo.Echo) {
+	t.Helper()
 	s := &Server{
-		Store: st,
-		LLM:   fakeLLM{},
+		Store: newStore(t),
+		LLM:   llm,
 		Mail:  func(model.Tailored, []byte, string) (bool, error) { return false, nil },
 	}
 	e := echo.New()
 	s.Register(e)
 	return s, e
+}
+
+func newTestServer(t *testing.T) (*Server, *echo.Echo) {
+	t.Helper()
+	return newTestServerWithLLM(t, fakeLLM{})
 }
 
 func uploadRequest(t *testing.T, pdf []byte) *http.Request {
@@ -232,5 +255,59 @@ func TestGenerateEmailFailureDoesNotFailRequest(t *testing.T) {
 	}
 	if got.Emailed {
 		t.Fatal("want emailed=false on mail error")
+	}
+}
+
+// TestGenerateResponseEmptyArraysStayArrays exercises the LLM returning
+// literal "gaps":[] / "whatChanged":[] and checks the /api/generate response
+// body serializes them as [] (regression guard alongside the nil case below).
+func TestGenerateResponseEmptyArraysStayArrays(t *testing.T) {
+	_, e := newTestServerWithLLM(t, fakeLLM{tailorOut: tailorJSONEmptyArrays})
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBody("Python Backend Engineer"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"gaps":[]`) || !strings.Contains(body, `"whatChanged":[]`) {
+		t.Fatalf("want gaps/whatChanged as [], got %s", body)
+	}
+	if strings.Contains(body, `"gaps":null`) || strings.Contains(body, `"whatChanged":null`) {
+		t.Fatalf("gaps/whatChanged must never be null, got %s", body)
+	}
+}
+
+// TestGenerationsListNilSlicesSerializeAsEmptyArrays seeds a generation with
+// nil Gaps/WhatChanged directly via store.SaveGeneration (bypassing the LLM
+// entirely, so it exercises the store-layer nil-guard) and checks the
+// /api/generations response body never contains null for those fields.
+func TestGenerationsListNilSlicesSerializeAsEmptyArrays(t *testing.T) {
+	st := newStore(t)
+	s := &Server{
+		Store: st,
+		LLM:   fakeLLM{},
+		Mail:  func(model.Tailored, []byte, string) (bool, error) { return false, nil },
+	}
+	e := echo.New()
+	s.Register(e)
+
+	ta := model.Tailored{TargetRole: "X", Gaps: nil, WhatChanged: nil}
+	if _, err := st.SaveGeneration(ta, []byte("pdf-bytes"), "x.pdf"); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"gaps":[]`) || !strings.Contains(body, `"whatChanged":[]`) {
+		t.Fatalf("want gaps/whatChanged as [], got %s", body)
+	}
+	if strings.Contains(body, `"gaps":null`) || strings.Contains(body, `"whatChanged":null`) {
+		t.Fatalf("gaps/whatChanged must never be null, got %s", body)
 	}
 }

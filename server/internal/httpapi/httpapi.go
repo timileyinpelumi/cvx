@@ -155,8 +155,8 @@ func (s *Server) postGenerate(c echo.Context) error {
 	return c.JSON(http.StatusOK, generateResponse{
 		ID:          meta.ID,
 		Filename:    meta.Filename,
-		Gaps:        tailored.Gaps,
-		WhatChanged: tailored.WhatChanged,
+		Gaps:        model.NonNil(tailored.Gaps),
+		WhatChanged: model.NonNil(tailored.WhatChanged),
 		Emailed:     emailed,
 	})
 }

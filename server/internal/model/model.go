@@ -111,3 +111,16 @@ func Filename(name, role string) string {
 	clean := func(s string) string { return strings.Trim(nonAlnum.ReplaceAllString(s, "_"), "_") }
 	return clean(name) + "_" + clean(role) + ".pdf"
 }
+
+// NonNil returns s unchanged if it is already non-nil, or an empty
+// (non-nil) slice of the same type otherwise. Use this on any slice field
+// that reaches an HTTP JSON response, so a nil slice (e.g. an LLM response
+// that omitted "gaps"/"whatChanged", or an empty SQL scan) serializes as
+// [] rather than null — UI code that unconditionally .map()s over these
+// fields would otherwise crash.
+func NonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
+}
