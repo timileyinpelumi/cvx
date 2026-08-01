@@ -1,0 +1,4 @@
+server/data/
+server/.env
+web/node_modules/
+web/.next/
