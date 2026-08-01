@@ -26,22 +26,35 @@ const maxUploadBytes = 15 << 20 // 15MB
 // Server holds the dependencies the HTTP handlers need. Mail is injectable
 // (it wraps mail.Send in main.go) so tests can fake it and so a failed send
 // never fails the /api/generate request. coverPDF/coverFilename are ""/nil
-// when the generation has no cover letter.
+// when the generation has no cover letter. Auth is nil unless CVX_PASSCODE
+// is set, in which case it gates every /api/* route below except
+// /api/login.
 type Server struct {
 	Store *store.Store
 	LLM   ai.LLM
 	Mail  func(t model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error)
+	Auth  *Auth
 }
 
 func (s *Server) Register(e *echo.Echo) {
-	e.GET("/api/profile", s.getProfile)
-	e.POST("/api/profile", s.postProfile)
-	e.POST("/api/profile/extend", s.postProfileExtend)
-	e.POST("/api/generate", s.postGenerate)
-	e.GET("/api/generations", s.listGenerations)
-	e.GET("/api/gaps", s.getGaps)
-	e.GET("/api/generations/:id/pdf", s.getGenerationPDF)
-	e.GET("/api/generations/:id/cover", s.getGenerationCoverPDF)
+	// /api/login is registered directly on e, outside the /api group, so it
+	// never runs through the group's own auth middleware below.
+	if s.Auth != nil {
+		e.POST("/api/login", s.Auth.postLogin)
+	}
+
+	api := e.Group("/api")
+	if s.Auth != nil {
+		api.Use(s.Auth.middleware)
+	}
+	api.GET("/profile", s.getProfile)
+	api.POST("/profile", s.postProfile)
+	api.POST("/profile/extend", s.postProfileExtend)
+	api.POST("/generate", s.postGenerate)
+	api.GET("/generations", s.listGenerations)
+	api.GET("/gaps", s.getGaps)
+	api.GET("/generations/:id/pdf", s.getGenerationPDF)
+	api.GET("/generations/:id/cover", s.getGenerationCoverPDF)
 }
 
 type profileSummary struct {

@@ -218,6 +218,70 @@
   }
 }
 
+/* -------------------------------------------------------------- passcode -- */
+
+.passcode {
+  padding: 20px;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.passcode-heading {
+  font-family: var(--font-body);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.passcode-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.passcode-field {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-control);
+  font-family: var(--font-mono);
+  /* 16px keeps iOS from zooming the viewport when the field takes focus. */
+  font-size: 16px;
+  color: var(--ink);
+  transition: border-color 120ms ease;
+}
+
+.passcode-field:hover {
+  border-color: color-mix(in srgb, var(--edge) 55%, var(--muted));
+}
+
+.passcode-field:disabled {
+  color: var(--muted);
+  opacity: 1;
+  -webkit-text-fill-color: var(--muted);
+}
+
+@media (min-width: 481px) {
+  .passcode {
+    padding: 24px;
+  }
+
+  .passcode-field {
+    font-size: 15px;
+  }
+}
+
+@media (min-width: 768px) {
+  .passcode {
+    padding: 32px;
+  }
+}
+
 /* --------------------------------------------------------- profile line -- */
 
 .profile-line {

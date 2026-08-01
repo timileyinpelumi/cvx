@@ -69,6 +69,18 @@ func main() {
 	}
 	slog.Info("llm", "provider", llmDesc)
 
+	// CVX_PASSCODE unset/empty leaves auth nil, which is a complete no-op in
+	// httpapi.Server.Register — existing localhost workflow is untouched.
+	var auth *httpapi.Auth
+	if passcode := os.Getenv("CVX_PASSCODE"); passcode != "" {
+		auth, err = httpapi.NewAuth(passcode)
+		if err != nil {
+			slog.Error("auth", "err", err)
+			os.Exit(1)
+		}
+		slog.Info("auth", "passcode", "enabled")
+	}
+
 	srv := &httpapi.Server{
 		Store: st,
 		LLM:   llm,
@@ -78,6 +90,7 @@ func main() {
 			}
 			return mail.Send(t, pdf, filename, "")
 		},
+		Auth: auth,
 	}
 
 	e := echo.New()
