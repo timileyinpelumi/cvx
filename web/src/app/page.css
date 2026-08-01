@@ -144,6 +144,14 @@
   color: var(--gap-missing);
 }
 
+.error-detail {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 /* ------------------------------------------------------------- uploader -- */
 
 .uploader {

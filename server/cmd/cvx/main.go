@@ -2,13 +2,14 @@ package main
 
 import (
 	"bufio"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 
 	"cvx/internal/ai"
 	"cvx/internal/httpapi"
@@ -46,22 +47,27 @@ func loadDotEnv(path string) {
 }
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
 	loadDotEnv(".env")
 
 	if err := os.MkdirAll("data", 0o755); err != nil {
-		log.Fatalf("mkdir data: %v", err)
+		slog.Error("mkdir data", "err", err)
+		os.Exit(1)
 	}
 	st, err := store.Open(filepath.Join("data", "cvx.db"))
 	if err != nil {
-		log.Fatalf("open store: %v", err)
+		slog.Error("open store", "err", err)
+		os.Exit(1)
 	}
 	defer st.Close()
 
 	llm, llmDesc, err := ai.NewFromEnv()
 	if err != nil {
-		log.Fatalf("llm: %v", err)
+		slog.Error("llm", "err", err)
+		os.Exit(1)
 	}
-	log.Printf("llm: %s", llmDesc)
+	slog.Info("llm", "provider", llmDesc)
 
 	srv := &httpapi.Server{
 		Store: st,
@@ -72,6 +78,35 @@ func main() {
 	}
 
 	e := echo.New()
+	e.Use(middleware.Recover())
+	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		LogMethod:   true,
+		LogURI:      true,
+		LogStatus:   true,
+		LogLatency:  true,
+		LogError:    true,
+		HandleError: true,
+		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+			attrs := []any{
+				"method", v.Method,
+				"uri", v.URI,
+				"status", v.Status,
+				"latency_ms", v.Latency.Milliseconds(),
+			}
+			if v.Error != nil {
+				attrs = append(attrs, "err", v.Error)
+			}
+			switch {
+			case v.Status >= 500:
+				slog.Error("request", attrs...)
+			case v.Status >= 400:
+				slog.Warn("request", attrs...)
+			default:
+				slog.Info("request", attrs...)
+			}
+			return nil
+		},
+	}))
 	e.GET("/healthz", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 	srv.Register(e)
 
@@ -79,5 +114,8 @@ func main() {
 	if addr == "" {
 		addr = ":8080"
 	}
-	e.Logger.Fatal(e.Start(addr))
+	if err := e.Start(addr); err != nil {
+		slog.Error("server stopped", "err", err)
+		os.Exit(1)
+	}
 }

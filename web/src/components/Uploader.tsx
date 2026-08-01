@@ -18,21 +18,35 @@ type Status = "idle" | "uploading" | "error";
 export function Uploader({ onUploaded }: UploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<Status>("idle");
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
   const uploading = status === "uploading";
 
   async function upload(file: File) {
     setStatus("uploading");
+    setErrorDetail(null);
     const body = new FormData();
     body.append("file", file);
     try {
       const res = await fetch("/api/profile", { method: "POST", body });
-      if (!res.ok) throw new Error(String(res.status));
+      if (!res.ok) {
+        let detail = "";
+        try {
+          const errBody = (await res.json()) as { error?: string };
+          detail = errBody.error ?? "";
+        } catch {
+          // non-JSON error body; no detail to show
+        }
+        setErrorDetail(detail || null);
+        setStatus("error");
+        return;
+      }
       const profile = (await res.json()) as ProfileSummary;
       setStatus("idle");
       onUploaded(profile);
     } catch {
+      setErrorDetail("server unreachable");
       setStatus("error");
     }
   }
@@ -111,10 +125,13 @@ export function Uploader({ onUploaded }: UploaderProps) {
           </p>
         ) : null}
         {status === "error" ? (
-          <p className="notice notice--error">
-            We couldn&apos;t read that file. Check that it&apos;s a PDF and try
-            again.
-          </p>
+          <>
+            <p className="notice notice--error">
+              We couldn&apos;t read that file. Check that it&apos;s a PDF and
+              try again.
+            </p>
+            {errorDetail ? <p className="error-detail">{errorDetail}</p> : null}
+          </>
         ) : null}
       </div>
     </div>

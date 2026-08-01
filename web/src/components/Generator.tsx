@@ -17,6 +17,7 @@ export function Generator({ result, onResult }: GeneratorProps) {
   const [roleInput, setRoleInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
 
   const autoGrow = useCallback(() => {
     const field = fieldRef.current;
@@ -43,15 +44,28 @@ export function Generator({ result, onResult }: GeneratorProps) {
   async function generate() {
     setBusy(true);
     setFailed(false);
+    setErrorDetail(null);
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roleInput }),
       });
-      if (!res.ok) throw new Error(String(res.status));
+      if (!res.ok) {
+        let detail = "";
+        try {
+          const errBody = (await res.json()) as { error?: string };
+          detail = errBody.error ?? "";
+        } catch {
+          // non-JSON error body; no detail to show
+        }
+        setErrorDetail(detail || null);
+        setFailed(true);
+        return;
+      }
       onResult((await res.json()) as GenerateResult);
     } catch {
+      setErrorDetail("server unreachable");
       setFailed(true);
     } finally {
       setBusy(false);
@@ -85,9 +99,12 @@ export function Generator({ result, onResult }: GeneratorProps) {
 
       <div className="notice-slot" role="status">
         {failed ? (
-          <p className="notice notice--error">
-            The tailoring failed. Try again in a moment.
-          </p>
+          <>
+            <p className="notice notice--error">
+              The tailoring failed. Try again in a moment.
+            </p>
+            {errorDetail ? <p className="error-detail">{errorDetail}</p> : null}
+          </>
         ) : null}
       </div>
 

@@ -7,7 +7,7 @@ package httpapi
 import (
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -56,6 +56,7 @@ func errJSON(c echo.Context, status int, msg string) error {
 func (s *Server) getProfile(c echo.Context) error {
 	p, err := s.Store.LoadProfile()
 	if err != nil {
+		slog.Error("load profile failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
 	if p == nil {
@@ -89,9 +90,11 @@ func (s *Server) postProfile(c echo.Context) error {
 
 	p, err := ai.Digitize(c.Request().Context(), s.LLM, data)
 	if err != nil {
+		slog.Error("digitize failed", "err", err)
 		return errJSON(c, http.StatusBadGateway, err.Error())
 	}
 	if err := s.Store.SaveProfile(p); err != nil {
+		slog.Error("save profile failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusOK, summarize(p))
@@ -120,6 +123,7 @@ func (s *Server) postGenerate(c echo.Context) error {
 
 	p, err := s.Store.LoadProfile()
 	if err != nil {
+		slog.Error("load profile failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
 	if p == nil {
@@ -129,17 +133,20 @@ func (s *Server) postGenerate(c echo.Context) error {
 	ctx := c.Request().Context()
 	tailored, err := ai.Tailor(ctx, s.LLM, *p, req.RoleInput)
 	if err != nil {
+		slog.Error("tailor failed", "err", err)
 		return errJSON(c, http.StatusBadGateway, err.Error())
 	}
 
 	pdf, err := pdfgen.Render(*p, tailored)
 	if err != nil {
+		slog.Error("render failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
 
 	filename := model.Filename(p.Name, tailored.TargetRole)
 	meta, err := s.Store.SaveGeneration(tailored, pdf, filename)
 	if err != nil {
+		slog.Error("save generation failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
 
@@ -147,7 +154,7 @@ func (s *Server) postGenerate(c echo.Context) error {
 	if s.Mail != nil {
 		ok, err := s.Mail(tailored, pdf, filename)
 		if err != nil {
-			log.Printf("httpapi: email send failed: %v", err)
+			slog.Warn("email send failed", "err", err)
 		}
 		emailed = ok
 	}
@@ -164,6 +171,7 @@ func (s *Server) postGenerate(c echo.Context) error {
 func (s *Server) listGenerations(c echo.Context) error {
 	list, err := s.Store.ListGenerations()
 	if err != nil {
+		slog.Error("list generations failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
 	if list == nil {
@@ -176,6 +184,7 @@ func (s *Server) getGenerationPDF(c echo.Context) error {
 	id := c.Param("id")
 	pdf, filename, err := s.Store.GetGenerationPDF(id)
 	if err != nil {
+		slog.Error("get generation pdf failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
 	if pdf == nil {

@@ -279,6 +279,56 @@ func TestGenerateResponseEmptyArraysStayArrays(t *testing.T) {
 	}
 }
 
+// failingLLM always returns err from GenerateJSON, regardless of the blocks
+// given, so it drives the digitize/tailor 502 branches directly.
+type failingLLM struct{ err error }
+
+func (f failingLLM) GenerateJSON(_ context.Context, _ string, _ []ai.ContentBlock, _ map[string]any) ([]byte, error) {
+	return nil, f.err
+}
+
+// TestUploadDigitizeFailureSurfacesUnderlyingError checks that when the LLM
+// fails during digitize, /api/profile returns 502 and the JSON error body
+// contains the underlying error text (not a generic message), since the web
+// UI now surfaces that text as a diagnostic detail line.
+func TestUploadDigitizeFailureSurfacesUnderlyingError(t *testing.T) {
+	_, e := newTestServerWithLLM(t, failingLLM{err: fmt.Errorf("rate limited by provider")})
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, uploadRequest(t, []byte("%PDF-fake")))
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("want 502, got %d: %s", rec.Code, rec.Body)
+	}
+	var got map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got["error"], "rate limited by provider") {
+		t.Fatalf("want error to contain underlying text, got %+v", got)
+	}
+}
+
+// TestGenerateTailorFailureSurfacesUnderlyingError is the same check for the
+// /api/generate tailor branch.
+func TestGenerateTailorFailureSurfacesUnderlyingError(t *testing.T) {
+	s, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake"))) // seed profile with the happy-path fakeLLM
+	s.LLM = failingLLM{err: fmt.Errorf("model returned invalid schema")}
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBody("Python Backend Engineer"))
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("want 502, got %d: %s", rec.Code, rec.Body)
+	}
+	var got map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got["error"], "model returned invalid schema") {
+		t.Fatalf("want error to contain underlying text, got %+v", got)
+	}
+}
+
 // TestGenerationsListNilSlicesSerializeAsEmptyArrays seeds a generation with
 // nil Gaps/WhatChanged directly via store.SaveGeneration (bypassing the LLM
 // entirely, so it exercises the store-layer nil-guard) and checks the
