@@ -28,14 +28,14 @@ type Link struct {
 }
 
 type Profile struct {
-	Name     string `json:"name"`
-	Email    string `json:"email"`
-	Phone    string `json:"phone"`
-	Location string `json:"location"`
-	Summary  string `json:"summary"`
-	Links    []Link `json:"links"`
+	Name     string   `json:"name"`
+	Email    string   `json:"email"`
+	Phone    string   `json:"phone"`
+	Location string   `json:"location"`
+	Summary  string   `json:"summary"`
+	Links    []Link   `json:"links"`
 	Skills   []string `json:"skills"`
-	Items    []Item `json:"items"`
+	Items    []Item   `json:"items"`
 }
 
 type TBullet struct {
@@ -63,13 +63,13 @@ type Gap struct {
 }
 
 type Tailored struct {
-	TargetRole    string     `json:"targetRole"`
-	Headline      string     `json:"headline"`
-	Summary       string     `json:"summary"`
-	SelectedSkills []string  `json:"selectedSkills"`
-	Sections      []TSection `json:"sections"`
-	Gaps          []Gap      `json:"gaps"`
-	WhatChanged   []string   `json:"whatChanged"`
+	TargetRole     string     `json:"targetRole"`
+	Headline       string     `json:"headline"`
+	Summary        string     `json:"summary"`
+	SelectedSkills []string   `json:"selectedSkills"`
+	Sections       []TSection `json:"sections"`
+	Gaps           []Gap      `json:"gaps"`
+	WhatChanged    []string   `json:"whatChanged"`
 }
 
 func AssignIDs(p *Profile) {

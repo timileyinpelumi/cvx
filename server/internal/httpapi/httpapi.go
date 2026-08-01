@@ -1,0 +1,186 @@
+// Package httpapi wires the cvx HTTP contract onto an echo.Echo: digitize,
+// tailor, render, persist, and (best-effort) email a tailored resume PDF.
+// Handlers are thin — all domain logic lives in ai, pdfgen, and store, which
+// are already unit-tested; this package only translates HTTP <-> those calls.
+package httpapi
+
+import (
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"strings"
+
+	"github.com/labstack/echo/v4"
+
+	"cvx/internal/ai"
+	"cvx/internal/model"
+	"cvx/internal/pdfgen"
+	"cvx/internal/store"
+)
+
+// maxUploadBytes caps profile PDF uploads; larger files get 413.
+const maxUploadBytes = 15 << 20 // 15MB
+
+// Server holds the dependencies the HTTP handlers need. Mail is injectable
+// (it wraps mail.Send in main.go) so tests can fake it and so a failed send
+// never fails the /api/generate request.
+type Server struct {
+	Store *store.Store
+	LLM   ai.LLM
+	Mail  func(model.Tailored, []byte, string) (bool, error)
+}
+
+func (s *Server) Register(e *echo.Echo) {
+	e.GET("/api/profile", s.getProfile)
+	e.POST("/api/profile", s.postProfile)
+	e.POST("/api/generate", s.postGenerate)
+	e.GET("/api/generations", s.listGenerations)
+	e.GET("/api/generations/:id/pdf", s.getGenerationPDF)
+}
+
+type profileSummary struct {
+	Name       string `json:"name"`
+	ItemCount  int    `json:"itemCount"`
+	SkillCount int    `json:"skillCount"`
+}
+
+func summarize(p model.Profile) profileSummary {
+	return profileSummary{Name: p.Name, ItemCount: len(p.Items), SkillCount: len(p.Skills)}
+}
+
+func errJSON(c echo.Context, status int, msg string) error {
+	return c.JSON(status, map[string]string{"error": msg})
+}
+
+func (s *Server) getProfile(c echo.Context) error {
+	p, err := s.Store.LoadProfile()
+	if err != nil {
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if p == nil {
+		return errJSON(c, http.StatusNotFound, "no profile")
+	}
+	return c.JSON(http.StatusOK, summarize(*p))
+}
+
+func (s *Server) postProfile(c echo.Context) error {
+	fh, err := c.FormFile("file")
+	if err != nil {
+		return errJSON(c, http.StatusBadRequest, "missing or invalid file")
+	}
+	if fh.Size > maxUploadBytes {
+		return errJSON(c, http.StatusRequestEntityTooLarge, "file too large")
+	}
+
+	f, err := fh.Open()
+	if err != nil {
+		return errJSON(c, http.StatusBadRequest, "missing or invalid file")
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return errJSON(c, http.StatusBadRequest, "missing or invalid file")
+	}
+	if len(data) > maxUploadBytes {
+		return errJSON(c, http.StatusRequestEntityTooLarge, "file too large")
+	}
+
+	p, err := ai.Digitize(c.Request().Context(), s.LLM, data)
+	if err != nil {
+		return errJSON(c, http.StatusBadGateway, err.Error())
+	}
+	if err := s.Store.SaveProfile(p); err != nil {
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(http.StatusOK, summarize(p))
+}
+
+type generateRequest struct {
+	RoleInput string `json:"roleInput"`
+}
+
+type generateResponse struct {
+	ID          string      `json:"id"`
+	Filename    string      `json:"filename"`
+	Gaps        []model.Gap `json:"gaps"`
+	WhatChanged []string    `json:"whatChanged"`
+	Emailed     bool        `json:"emailed"`
+}
+
+func (s *Server) postGenerate(c echo.Context) error {
+	var req generateRequest
+	if err := c.Bind(&req); err != nil {
+		return errJSON(c, http.StatusBadRequest, "invalid request body")
+	}
+	if strings.TrimSpace(req.RoleInput) == "" {
+		return errJSON(c, http.StatusBadRequest, "roleInput is required")
+	}
+
+	p, err := s.Store.LoadProfile()
+	if err != nil {
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if p == nil {
+		return errJSON(c, http.StatusConflict, "no profile")
+	}
+
+	ctx := c.Request().Context()
+	tailored, err := ai.Tailor(ctx, s.LLM, *p, req.RoleInput)
+	if err != nil {
+		return errJSON(c, http.StatusBadGateway, err.Error())
+	}
+
+	pdf, err := pdfgen.Render(*p, tailored)
+	if err != nil {
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+
+	filename := model.Filename(p.Name, tailored.TargetRole)
+	meta, err := s.Store.SaveGeneration(tailored, pdf, filename)
+	if err != nil {
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+
+	emailed := false
+	if s.Mail != nil {
+		ok, err := s.Mail(tailored, pdf, filename)
+		if err != nil {
+			log.Printf("httpapi: email send failed: %v", err)
+		}
+		emailed = ok
+	}
+
+	return c.JSON(http.StatusOK, generateResponse{
+		ID:          meta.ID,
+		Filename:    meta.Filename,
+		Gaps:        tailored.Gaps,
+		WhatChanged: tailored.WhatChanged,
+		Emailed:     emailed,
+	})
+}
+
+func (s *Server) listGenerations(c echo.Context) error {
+	list, err := s.Store.ListGenerations()
+	if err != nil {
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if list == nil {
+		list = []store.GenerationMeta{}
+	}
+	return c.JSON(http.StatusOK, list)
+}
+
+func (s *Server) getGenerationPDF(c echo.Context) error {
+	id := c.Param("id")
+	pdf, filename, err := s.Store.GetGenerationPDF(id)
+	if err != nil {
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if pdf == nil {
+		return errJSON(c, http.StatusNotFound, "unknown generation id")
+	}
+	c.Response().Header().Set(echo.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s"`, filename))
+	return c.Blob(http.StatusOK, "application/pdf", pdf)
+}
