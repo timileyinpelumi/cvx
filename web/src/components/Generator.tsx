@@ -77,8 +77,8 @@ export function Generator({ result, onResult }: GeneratorProps) {
       <textarea
         ref={fieldRef}
         className="composer-field"
-        aria-label="Paste a role title, or the full job description for a closer fit"
-        placeholder="Paste a role title, or the full job description for a closer fit"
+        aria-label="Paste a role title, a job posting link, or the full job description"
+        placeholder="Paste a role title, a job posting link, or the full job description"
         value={roleInput}
         disabled={busy}
         onChange={(event) => setRoleInput(event.target.value)}

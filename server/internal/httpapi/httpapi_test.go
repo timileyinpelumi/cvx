@@ -329,6 +329,53 @@ func TestGenerateTailorFailureSurfacesUnderlyingError(t *testing.T) {
 	}
 }
 
+// TestGenerateWithURLRoleInputFetchesText points roleInput at an httptest
+// server serving a job posting page; postGenerate should fetch and use the
+// extracted text instead of treating the URL itself as the role input. The
+// fakeLLM ignores prompt content for the tailor call, so this only proves
+// the pre-step ran without erroring rather than what text it extracted.
+func TestGenerateWithURLRoleInputFetchesText(t *testing.T) {
+	jobSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body><h1>Python Backend Engineer</h1><p>Build things with Python.</p></body></html>`))
+	}))
+	defer jobSrv.Close()
+
+	_, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBody(jobSrv.URL))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// TestGenerateWithURLRoleInputFetchFailureReturns502 points roleInput at a
+// URL that 404s; postGenerate should surface a 502 with a "fetch job
+// posting: ..." detail rather than passing the raw URL to the tailor LLM.
+func TestGenerateWithURLRoleInputFetchFailureReturns502(t *testing.T) {
+	jobSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer jobSrv.Close()
+
+	_, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBody(jobSrv.URL))
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("want 502, got %d: %s", rec.Code, rec.Body)
+	}
+	var got map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(got["error"], "fetch job posting: ") {
+		t.Fatalf("want error prefixed with 'fetch job posting: ', got %+v", got)
+	}
+}
+
 // TestGenerationsListNilSlicesSerializeAsEmptyArrays seeds a generation with
 // nil Gaps/WhatChanged directly via store.SaveGeneration (bypassing the LLM
 // entirely, so it exercises the store-layer nil-guard) and checks the

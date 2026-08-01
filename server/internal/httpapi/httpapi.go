@@ -14,6 +14,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"cvx/internal/ai"
+	"cvx/internal/jdfetch"
 	"cvx/internal/model"
 	"cvx/internal/pdfgen"
 	"cvx/internal/store"
@@ -121,6 +122,16 @@ func (s *Server) postGenerate(c echo.Context) error {
 		return errJSON(c, http.StatusBadRequest, "roleInput is required")
 	}
 
+	ctx := c.Request().Context()
+	if jdfetch.IsURL(req.RoleInput) {
+		text, err := jdfetch.FetchText(ctx, req.RoleInput)
+		if err != nil {
+			slog.Error("jd fetch failed", "err", err)
+			return errJSON(c, http.StatusBadGateway, "fetch job posting: "+err.Error())
+		}
+		req.RoleInput = text
+	}
+
 	p, err := s.Store.LoadProfile()
 	if err != nil {
 		slog.Error("load profile failed", "err", err)
@@ -130,7 +141,6 @@ func (s *Server) postGenerate(c echo.Context) error {
 		return errJSON(c, http.StatusConflict, "no profile")
 	}
 
-	ctx := c.Request().Context()
 	tailored, err := ai.Tailor(ctx, s.LLM, *p, req.RoleInput)
 	if err != nil {
 		slog.Error("tailor failed", "err", err)
