@@ -57,9 +57,15 @@ func main() {
 	}
 	defer st.Close()
 
+	llm, llmDesc, err := ai.NewFromEnv()
+	if err != nil {
+		log.Fatalf("llm: %v", err)
+	}
+	log.Printf("llm: %s", llmDesc)
+
 	srv := &httpapi.Server{
 		Store: st,
-		LLM:   ai.NewAnthropic(),
+		LLM:   llm,
 		Mail: func(t model.Tailored, pdf []byte, filename string) (bool, error) {
 			return mail.Send(t, pdf, filename, "")
 		},

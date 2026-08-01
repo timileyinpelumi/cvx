@@ -6,6 +6,7 @@ require (
 	github.com/anthropics/anthropic-sdk-go v1.61.0
 	github.com/go-pdf/fpdf v0.9.0
 	github.com/labstack/echo/v4 v4.15.4
+	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	modernc.org/sqlite v1.55.0
 )
 

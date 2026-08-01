@@ -23,12 +23,20 @@ type ContentBlock struct {
 
 type anthropicLLM struct {
 	client anthropic.Client
+	model  string
 }
 
-// NewAnthropic constructs a real LLM backed by the Anthropic API.
-// The API key is read from ANTHROPIC_API_KEY via the SDK's default client options.
+// NewAnthropic constructs a real LLM backed by the Anthropic API using the
+// default model. The API key is read from ANTHROPIC_API_KEY via the SDK's
+// default client options.
 func NewAnthropic() LLM {
-	return anthropicLLM{client: anthropic.NewClient()}
+	return NewAnthropicWithModel("claude-opus-5")
+}
+
+// NewAnthropicWithModel is like NewAnthropic but lets the caller pick the
+// model (used by NewFromEnv so CVX_LLM_MODEL can override it).
+func NewAnthropicWithModel(model string) LLM {
+	return anthropicLLM{client: anthropic.NewClient(), model: model}
 }
 
 func (a anthropicLLM) GenerateJSON(ctx context.Context, system string, blocks []ContentBlock, schema map[string]any) ([]byte, error) {
@@ -42,7 +50,7 @@ func (a anthropicLLM) GenerateJSON(ctx context.Context, system string, blocks []
 		}
 	}
 	params := anthropic.MessageNewParams{
-		Model:     "claude-opus-5",
+		Model:     anthropic.Model(a.model),
 		MaxTokens: 16000,
 		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(content...)},
 		OutputConfig: anthropic.OutputConfigParam{
