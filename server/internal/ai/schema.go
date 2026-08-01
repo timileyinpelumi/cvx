@@ -1,0 +1,136 @@
+package ai
+
+// profileSchema mirrors model.Profile (and its nested types) without any id
+// fields — the LLM never assigns ids; model.AssignIDs does that after
+// unmarshaling. Every object is closed (additionalProperties: false) and
+// fully required; string fields use "" to signal an absent value rather than
+// null so the schema stays free of "nullable" unions.
+var profileSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"name":     map[string]any{"type": "string"},
+		"email":    map[string]any{"type": "string"},
+		"phone":    map[string]any{"type": "string"},
+		"location": map[string]any{"type": "string"},
+		"summary":  map[string]any{"type": "string"},
+		"links": map[string]any{
+			"type": "array",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"label": map[string]any{"type": "string"},
+					"url":   map[string]any{"type": "string"},
+				},
+				"required":             []string{"label", "url"},
+				"additionalProperties": false,
+			},
+		},
+		"skills": map[string]any{
+			"type":  "array",
+			"items": map[string]any{"type": "string"},
+		},
+		"items": map[string]any{
+			"type": "array",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"kind":         map[string]any{"type": "string"},
+					"title":        map[string]any{"type": "string"},
+					"organization": map[string]any{"type": "string"},
+					"startDate":    map[string]any{"type": "string"},
+					"endDate":      map[string]any{"type": "string"},
+					"bullets": map[string]any{
+						"type": "array",
+						"items": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"text": map[string]any{"type": "string"},
+								"skills": map[string]any{
+									"type":  "array",
+									"items": map[string]any{"type": "string"},
+								},
+							},
+							"required":             []string{"text", "skills"},
+							"additionalProperties": false,
+						},
+					},
+				},
+				"required":             []string{"kind", "title", "organization", "startDate", "endDate", "bullets"},
+				"additionalProperties": false,
+			},
+		},
+	},
+	"required":             []string{"name", "email", "phone", "location", "summary", "links", "skills", "items"},
+	"additionalProperties": false,
+}
+
+// tailoredSchema mirrors model.Tailored exactly (camelCase keys), including
+// the source ids the guardrail in tailor.go checks against the profile.
+var tailoredSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"targetRole": map[string]any{"type": "string"},
+		"headline":   map[string]any{"type": "string"},
+		"summary":    map[string]any{"type": "string"},
+		"selectedSkills": map[string]any{
+			"type":  "array",
+			"items": map[string]any{"type": "string"},
+		},
+		"sections": map[string]any{
+			"type": "array",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"title": map[string]any{"type": "string"},
+					"items": map[string]any{
+						"type": "array",
+						"items": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"sourceId":     map[string]any{"type": "string"},
+								"title":        map[string]any{"type": "string"},
+								"organization": map[string]any{"type": "string"},
+								"dates":        map[string]any{"type": "string"},
+								"bullets": map[string]any{
+									"type": "array",
+									"items": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"sourceBulletId": map[string]any{"type": "string"},
+											"text":           map[string]any{"type": "string"},
+										},
+										"required":             []string{"sourceBulletId", "text"},
+										"additionalProperties": false,
+									},
+								},
+							},
+							"required":             []string{"sourceId", "title", "organization", "dates", "bullets"},
+							"additionalProperties": false,
+						},
+					},
+				},
+				"required":             []string{"title", "items"},
+				"additionalProperties": false,
+			},
+		},
+		"gaps": map[string]any{
+			"type": "array",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"requirement": map[string]any{"type": "string"},
+					"evidence":    map[string]any{"type": "string"},
+					"severity":    map[string]any{"type": "string", "enum": []string{"missing", "weak"}},
+				},
+				"required":             []string{"requirement", "evidence", "severity"},
+				"additionalProperties": false,
+			},
+		},
+		"whatChanged": map[string]any{
+			"type":  "array",
+			"items": map[string]any{"type": "string"},
+		},
+	},
+	"required":             []string{"targetRole", "headline", "summary", "selectedSkills", "sections", "gaps", "whatChanged"},
+	"additionalProperties": false,
+}
