@@ -78,7 +78,6 @@ func main() {
 	}
 
 	e := echo.New()
-	e.Use(middleware.Recover())
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		LogMethod:   true,
 		LogURI:      true,
@@ -107,6 +106,7 @@ func main() {
 			return nil
 		},
 	}))
+	e.Use(middleware.Recover())
 	e.GET("/healthz", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 	srv.Register(e)
 
