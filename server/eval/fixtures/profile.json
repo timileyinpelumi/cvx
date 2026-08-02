@@ -17,7 +17,7 @@
   "items": [
     {
       "id": "item-0",
-      "kind": "work",
+      "kind": "experience",
       "title": "Senior Backend Engineer",
       "organization": "Kolo Pay",
       "startDate": "2022-03",
@@ -52,7 +52,7 @@
     },
     {
       "id": "item-1",
-      "kind": "work",
+      "kind": "experience",
       "title": "Backend Engineer",
       "organization": "Meridian Health Analytics",
       "startDate": "2019-06",
@@ -87,7 +87,7 @@
     },
     {
       "id": "item-2",
-      "kind": "work",
+      "kind": "experience",
       "title": "Fullstack Engineer",
       "organization": "Loom Labs",
       "startDate": "2017-08",
