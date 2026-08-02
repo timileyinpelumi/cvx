@@ -1,0 +1,41 @@
+Senior Frontend Engineer (React / TypeScript)
+
+About the role
+
+A design-tools startup is hiring a Senior Frontend Engineer to help build the core editing experience used by thousands of design teams daily. Our frontend is a large, long-lived React and TypeScript codebase with real-time collaboration, canvas rendering, and a level of interaction complexity closer to a native app than a typical CRUD dashboard. We're looking for someone who can own significant pieces of that experience and make it faster, more accessible, and easier for the rest of the team to build on.
+
+Responsibilities
+
+- Lead the design and implementation of complex, interactive UI features in React and TypeScript, from technical design through shipping and iteration.
+- Own performance of core editing surfaces: profiling re-renders, reducing bundle size, and keeping interactions smooth even with large documents open.
+- Build and maintain a shared component library used across the product, with an eye toward consistency, accessibility, and reusability.
+- Integrate with our GraphQL API layer, including designing client-side data fetching and caching strategies (Apollo Client or React Query).
+- Drive adoption of testing practices for frontend code — unit tests for logic-heavy components, integration tests for critical user flows, and visual regression coverage where it matters.
+- Collaborate closely with design and product to turn Figma specs into pixel-accurate, accessible, responsive implementations.
+- Improve our build and tooling setup (Vite, TypeScript config, CI) to keep local dev fast and CI reliable as the codebase grows.
+- Mentor other frontend engineers through code review and pairing, and help set technical direction for the frontend team.
+- Champion accessibility (WCAG 2.1 AA) as a first-class requirement, not a follow-up pass.
+
+Requirements
+
+- 6+ years of frontend engineering experience, with at least 4 years working deeply in React and TypeScript in production.
+- Strong understanding of React internals — rendering behavior, hooks, memoization, and how to diagnose and fix performance problems in a large component tree.
+- Experience with state management approaches beyond basic useState/useContext (Redux, Zustand, Jotai, or well-reasoned custom solutions) and knowing when each is appropriate.
+- Experience consuming GraphQL or REST APIs from the frontend, including caching, optimistic updates, and error handling.
+- Solid CSS fundamentals (flexbox, grid, responsive design) and experience with a modern styling approach (CSS-in-JS, Tailwind, or CSS Modules).
+- Experience with frontend testing tools (Jest, React Testing Library, Playwright or Cypress for end-to-end).
+- A track record of shipping accessible UI and understanding of ARIA patterns, keyboard navigation, and screen reader behavior.
+- Comfortable working directly with designers and giving product feedback grounded in what's technically feasible and what isn't.
+
+Nice to have
+
+- Experience with canvas or WebGL rendering, or other performance-critical, non-standard DOM rendering.
+- Experience building or contributing to real-time collaborative features (CRDTs, operational transforms, WebSockets).
+- Familiarity with design systems and design tokens, and experience keeping a component library in sync with a design source of truth.
+- Experience with monorepo tooling (Turborepo, Nx) and managing shared packages across multiple frontend apps.
+- Open-source contributions to React ecosystem libraries.
+- Experience with Next.js for the marketing/docs surfaces of the product.
+
+What we offer
+
+Fully remote with optional office access in two cities, a strong design culture where engineers are expected to have opinions about UX, and a codebase we actively invest in keeping healthy rather than letting rot. Competitive salary, meaningful equity, and a team that ships weekly and takes frontend performance as seriously as backend performance.

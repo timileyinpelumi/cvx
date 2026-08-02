@@ -1,0 +1,42 @@
+Senior Application Security Engineer
+
+About the role
+
+A B2B SaaS company handling sensitive customer data (contracts, financial documents) is hiring a Senior Application Security Engineer to help scale our security program alongside a growing engineering org. This role is hands-on: you will review code and architecture, build security tooling, and work directly with engineering teams to fix issues, not just write reports about them. We operate in a DevSecOps model where security is embedded in engineering workflows rather than a separate gate at the end.
+
+Responsibilities
+
+- Perform security reviews of new features and architecture changes, focused on the OWASP Top 10 and beyond: authentication/authorization flaws, injection, SSRF, insecure deserialization, and business logic vulnerabilities.
+- Design and build automated security tooling: SAST/DAST integration into CI/CD, dependency vulnerability scanning, and secrets detection, tuned to minimize noisy false positives.
+- Lead threat modeling sessions with engineering teams for significant new features, especially anything touching customer data, authentication, or third-party integrations.
+- Own our vulnerability management process end to end: triage, prioritization, tracking remediation SLAs, and reporting on program health.
+- Manage and triage our bug bounty program, including validating reported vulnerabilities and coordinating fixes with the responsible team.
+- Support incident response for security events: help scope impact, coordinate remediation, and contribute to post-incident write-ups.
+- Design and review API security controls: authentication (OAuth2/OIDC), authorization models (RBAC/ABAC), rate limiting, and input validation.
+- Partner with the compliance team to support SOC 2 and customer security questionnaires with real technical evidence, not just paperwork.
+- Provide security training and office hours for engineering teams, building security awareness rather than just gatekeeping.
+- Stay current on emerging vulnerability classes and attack techniques relevant to our stack (web application, API, cloud infrastructure).
+
+Requirements
+
+- 6+ years of experience in application security, security engineering, or a closely related role with substantial hands-on code/architecture review experience.
+- Deep, practical knowledge of common web application and API vulnerability classes and how to both find and fix them, not just name them.
+- Experience integrating security tooling (SAST, DAST, SCA, secrets scanning) into CI/CD pipelines in a way that engineering teams actually tolerate and act on.
+- Experience with threat modeling methodologies (STRIDE or similar) and running effective threat modeling sessions with engineers who are not security specialists.
+- Solid understanding of authentication and authorization patterns: OAuth2, OIDC, session management, and common implementation mistakes.
+- Experience with cloud security fundamentals (AWS or GCP): IAM design, network segmentation, secrets management, and common cloud misconfiguration classes.
+- Comfortable reading code across multiple languages well enough to identify real vulnerabilities, even without deep expertise in every language.
+- Strong written and verbal communication — a large part of this role is convincing busy engineering teams to prioritize security fixes.
+
+Nice to have
+
+- Relevant certifications: OSCP, CISSP, or similar, though hands-on ability matters more to us than the certification itself.
+- Experience running or scaling a bug bounty program.
+- Experience with SOC 2 Type II or similar compliance frameworks from the engineering side.
+- Background as a software engineer before moving into security — it helps when reviewing real production code and proposing fixes engineers will actually accept.
+- Experience with container and Kubernetes security (image scanning, runtime security, pod security standards).
+- Familiarity with security implications specific to LLM-integrated features (prompt injection, data exfiltration via model outputs).
+
+Culture and compensation
+
+Security here is a partner to engineering, not an obstacle — we measure success by how quickly and thoroughly issues get fixed, not by how many findings get filed. Competitive compensation, meaningful equity, and a program that has real executive support and budget, not just a checkbox for enterprise sales. Remote-friendly, with a small but growing security team you'll help shape.

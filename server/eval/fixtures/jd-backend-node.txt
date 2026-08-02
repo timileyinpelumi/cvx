@@ -1,0 +1,41 @@
+Senior Backend Engineer (Node.js / TypeScript)
+
+About the role
+
+A B2B logistics platform is looking for a Senior Backend Engineer to help scale the systems that route and track shipments for mid-market freight customers. Our backend is TypeScript end to end, running on Node.js, with a mix of REST and GraphQL APIs backed by PostgreSQL. As we grow, our transaction volume and the complexity of our integrations (carrier APIs, EDI, webhooks) are growing with it, and we need someone who has handled that kind of scale before.
+
+What you'll do
+
+- Design and build backend services in Node.js and TypeScript that handle shipment routing, tracking updates, and carrier integrations at increasing scale.
+- Own GraphQL and REST API surfaces end to end — schema design, resolver implementation, performance, and versioning.
+- Model and evolve our core PostgreSQL schema, including writing and reviewing migrations that run safely against large, actively-written tables.
+- Design event-driven workflows using a message queue (currently SQS, evaluating Kafka) to decouple carrier webhook ingestion from downstream processing.
+- Improve system resilience under load: idempotency for webhook retries, backpressure handling, and graceful degradation when third-party carrier APIs are slow or down.
+- Partner closely with frontend engineers consuming our GraphQL API to make sure the contract is ergonomic and well-documented.
+- Debug and resolve production issues, often involving external systems outside our control (carrier APIs going down, malformed EDI documents, etc.).
+- Contribute to our internal libraries and shared tooling used across services (logging, tracing, auth middleware).
+- Participate in an on-call rotation and drive incident postmortems to completion, including follow-up work.
+
+What we're looking for
+
+- 6+ years of professional software engineering experience, with deep, recent experience in Node.js and TypeScript in production.
+- Strong understanding of asynchronous programming in JavaScript/TypeScript, including the pitfalls of unhandled promise rejections, event loop blocking, and backpressure.
+- Experience designing and operating GraphQL APIs (Apollo Server or similar) in addition to REST.
+- Solid relational database experience with PostgreSQL: query optimization, indexing, transactions, and migration safety at scale.
+- Experience with distributed systems patterns: message queues, event-driven architecture, idempotent consumers, and handling out-of-order or duplicate events.
+- Comfortable owning services in production, including monitoring, alerting, and incident response.
+- Strong object-oriented and functional design instincts — you can explain why you structured a service the way you did, not just that it works.
+- Excellent asynchronous communication skills; this is a remote-first team spanning multiple time zones.
+
+Nice to have
+
+- Experience integrating with EDI (Electronic Data Interchange) or other legacy B2B data formats.
+- Experience with logistics, supply chain, or marketplace systems.
+- Familiarity with Kafka or another log-based streaming platform.
+- Experience with infrastructure-as-code (Terraform, CDK) and a working knowledge of AWS.
+- Contributions to internal developer tooling or platform work that improved another team's velocity.
+- Experience with feature flagging and progressive rollout strategies for backend changes.
+
+Life at the company
+
+We're a distributed team of about 40 engineers, remote-first with a hub in NYC for those who want it. We ship in small increments, review PRs same-day, and take backend reliability seriously because our customers are moving physical freight — when our systems are down, trucks are idle. Compensation is competitive with market-rate tech salaries, with equity and a real (not performative) focus on work-life balance around on-call.

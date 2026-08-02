@@ -1,0 +1,43 @@
+Smart Contract Engineer (Solidity)
+
+About the role
+
+A decentralized finance protocol is hiring a Smart Contract Engineer to help design, build, and secure the on-chain contracts that manage user deposits, lending positions, and protocol treasury. Smart contract bugs here are not theoretical — they can directly result in loss of user funds, so this role has a strong security-first mandate and works closely with auditors and the security team on every non-trivial change.
+
+Responsibilities
+
+- Design and implement Solidity smart contracts for core protocol functionality: lending pools, collateral management, liquidations, and governance.
+- Write comprehensive test suites (unit, integration, fuzz/invariant tests) using Foundry, treating test coverage on financial logic as non-negotiable.
+- Conduct internal security reviews of your own and teammates' contract changes, applying known vulnerability patterns (reentrancy, integer overflow/underflow, access control bugs, oracle manipulation) as a checklist, not an afterthought.
+- Optimize gas usage in contracts without compromising security or auditability — measure before optimizing, and document tradeoffs.
+- Prepare contracts and documentation for external audits, and drive remediation of audit findings to closure.
+- Design and implement upgrade patterns (proxy contracts, timelocks) where appropriate, understanding the security tradeoffs of each pattern.
+- Work with the frontend team to define clean contract interfaces (ABI design) that are hard to misuse from the client side.
+- Monitor deployed contracts for anomalous on-chain activity and help build tooling/alerting for early detection of exploit attempts.
+- Participate in incident response for any on-chain security event, including the ability to move fast and communicate clearly under pressure.
+- Stay current with DeFi security research, disclosed exploits in similar protocols, and known attack patterns relevant to our contract design.
+
+Requirements
+
+- 3+ years of production Solidity experience, including at least one significant protocol that has gone through external audit and mainnet deployment.
+- Deep understanding of EVM mechanics: gas costs, storage layout, call semantics (call/delegatecall/staticcall), and how these interact with security.
+- Proficiency with Foundry (or Hardhat) for development, testing, and deployment scripting, including writing fuzz and invariant tests.
+- Strong understanding of common smart contract vulnerability classes and how to design against them from the start, not patch them after the fact.
+- Familiarity with major token standards (ERC-20, ERC-721, ERC-4626) and their common implementation pitfalls.
+- Experience with gas optimization techniques and the judgment to know when optimization isn't worth the added complexity or risk.
+- Comfortable reading and reasoning about other protocols' contracts (for integrations or security research) directly from bytecode or verified source.
+- Security-first mindset: you assume adversarial actors will look for edge cases in every public function you write.
+
+Nice to have
+
+- Experience with formal verification tools or techniques for critical contract logic.
+- Familiarity with oracle design and the security implications of price feed manipulation.
+- Experience with a second smart contract language or ecosystem (Rust/Solana, Cairo/Starknet, or similar).
+- Experience using static analysis tools (Slither, Mythril) as part of a regular development workflow.
+- Prior experience responding to a live on-chain incident or exploit attempt.
+- Familiarity with DAO governance mechanisms and on-chain voting contract design.
+- Contributions to open-source DeFi protocols or security tooling.
+
+Why join us
+
+Protocol security is treated as the top engineering priority, not a checkbox before launch — we budget real time for audits, bug bounties, and defensive engineering, and we don't ship under-tested contract changes to save time. Fully remote, competitive compensation including a token allocation, and a small team where every engineer has real ownership over protocol-critical code.

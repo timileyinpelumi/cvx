@@ -1,0 +1,39 @@
+Fullstack Engineer (React / Node)
+
+About the role
+
+A seed-stage startup building tools for small business accounting is hiring a Fullstack Engineer to join a small, fast-moving founding engineering team. We're a React/TypeScript frontend on top of a Node.js/TypeScript backend with PostgreSQL, deployed on a small set of managed services so we can spend our time on product, not infrastructure. You'll work across the whole stack, from database schema to UI polish, often on the same feature in the same week.
+
+What you'll do
+
+- Ship complete features end to end: design the data model, build the API, and build the UI that consumes it.
+- Work directly with the founders and a handful of early customers to turn fuzzy problems ("reconciling transactions is painful") into shipped product.
+- Build and maintain our core React/TypeScript frontend, including forms-heavy flows (invoicing, reconciliation, reporting) that need to feel fast and trustworthy.
+- Design and extend our Node.js/Express REST API and PostgreSQL schema as the product surface grows.
+- Write tests for the parts of the system where correctness really matters (anything touching money or account balances), and use judgment about where lighter coverage is fine.
+- Help set technical direction as one of the first engineering hires — conventions, tooling, and architecture decisions you make now will matter for years.
+- Debug production issues quickly; at this stage there's no dedicated on-call rotation, everyone pitches in when something breaks.
+- Participate in fast iteration cycles: ship, get feedback from real users within days, adjust.
+
+What we're looking for
+
+- 3+ years of professional software engineering experience building fullstack web applications.
+- Solid, hands-on experience with React and TypeScript on the frontend, and Node.js (Express or similar) on the backend.
+- Comfortable designing a relational database schema from scratch and evolving it as requirements change (PostgreSQL experience preferred).
+- Experience building and consuming REST APIs, including authentication and basic authorization patterns.
+- A pragmatic approach to testing and code quality — you know the difference between code that needs to be bulletproof and code that needs to ship today.
+- Comfortable with ambiguity: requirements at an early-stage startup change fast, and you'll be expected to help shape them, not just implement a spec.
+- Strong communication skills; you'll be talking to customers and founders directly, not just other engineers.
+- A bias toward shipping — you'd rather get something in front of users and iterate than polish something nobody's used yet.
+
+Nice to have
+
+- Experience at an early-stage startup (pre-seed through Series A) where you wore multiple hats.
+- Familiarity with fintech, accounting, or bookkeeping domain concepts (double-entry accounting, reconciliation, invoicing).
+- Experience with a modern deployment platform (Render, Fly.io, Vercel, Railway) rather than raw cloud infrastructure.
+- Exposure to payment processing integrations (Stripe, Plaid) or similar third-party financial APIs.
+- Design sensibility — comfortable making reasonable UI/UX calls without a dedicated designer in the loop for every decision.
+
+What we offer
+
+Meaningful equity in an early-stage company, a small team where your work is immediately visible in the product, and direct access to customers and founders. This is a generalist role at a stage where breadth matters more than deep specialization — you'll touch the database schema, the API, and the UI, often in the same day. We're currently a team of five engineers, fully remote, with occasional in-person offsites.

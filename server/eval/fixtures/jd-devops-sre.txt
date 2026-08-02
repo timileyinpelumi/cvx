@@ -1,0 +1,43 @@
+Site Reliability Engineer
+
+About the role
+
+A video streaming infrastructure company is hiring a Site Reliability Engineer to help keep our delivery platform fast and available for customers serving millions of viewers. We run a mix of Kubernetes clusters across multiple cloud regions, with infrastructure entirely defined as code. This role sits at the intersection of software engineering and operations: you'll write real code (automation, tooling, small services) as much as you'll manage infrastructure, and you'll carry real accountability for the reliability of production systems.
+
+Responsibilities
+
+- Define and maintain SLOs for critical services, and use error budgets to have concrete, data-driven conversations with product teams about the tradeoff between velocity and reliability.
+- Build and operate Kubernetes clusters (EKS) across multiple regions, including upgrades, node pool management, and capacity planning ahead of major traffic events.
+- Write and maintain infrastructure as code using Terraform, keeping our environments reproducible and reviewable.
+- Design and improve CI/CD pipelines to make deploys fast, safe, and easy to roll back.
+- Build internal tooling and automation to reduce toil — anything done manually more than twice becomes a candidate for automation.
+- Lead or participate in incident response for production issues, including being part of a primary on-call rotation with clear escalation paths.
+- Write clear, blameless postmortems after significant incidents and drive the resulting action items to completion.
+- Improve observability across the stack: metrics, logs, and traces that make it possible to answer "why is this slow" in minutes, not hours.
+- Partner with application engineering teams to review architecture for reliability and operability before it ships, not after it breaks.
+- Contribute to capacity planning and cost optimization efforts across our cloud infrastructure.
+
+Requirements
+
+- 5+ years of experience in an SRE, DevOps, or infrastructure engineering role operating production systems at scale.
+- Strong hands-on experience running Kubernetes in production, including debugging real cluster and workload issues under pressure.
+- Solid experience writing Terraform (or another IaC tool) for real infrastructure, not just toy examples.
+- Proficiency in at least one general-purpose programming language (Go, Python, or similar) used for tooling and automation, not just scripting.
+- Experience with CI/CD systems (GitHub Actions, CircleCI, GitLab CI, or similar) and designing deployment pipelines that are safe by default.
+- Practical understanding of observability: setting up and using metrics/dashboards (Prometheus, Grafana), distributed tracing, and log aggregation.
+- Experience defining and working with SLOs/SLIs and error budgets in a real organization, not just in theory.
+- Comfortable being part of an on-call rotation and taking ownership of incidents from detection through resolution and postmortem.
+- Strong communication skills — SRE work involves a lot of cross-team negotiation about risk and priorities.
+
+Nice to have
+
+- Experience with multi-region or multi-cloud infrastructure and the tradeoffs involved.
+- Relevant certifications: CKA, AWS Solutions Architect Professional, or Google Cloud Professional Cloud DevOps Engineer.
+- Experience with service mesh technologies (Istio, Linkerd) or advanced traffic management (canary deploys, progressive delivery).
+- Background in video/media streaming, CDN operations, or another latency-sensitive, high-throughput domain.
+- Experience running chaos engineering exercises or game days to validate system resilience before real incidents happen.
+- Contributions to open-source infrastructure tooling.
+
+Compensation and culture
+
+This is a fully remote role with a real, sustainable on-call rotation (compensated for off-hours pages) and a culture that treats incidents as learning opportunities rather than blame exercises. Competitive salary and equity, and a team that genuinely believes reliability work is engineering work, not second-class ops work.

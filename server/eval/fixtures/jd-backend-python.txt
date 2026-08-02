@@ -1,0 +1,42 @@
+Senior Backend Engineer (Python)
+
+About the role
+
+A healthcare data company is hiring a Senior Backend Engineer to help build the systems that ingest, normalize, and serve clinical and claims data to hospital networks and insurers. Our backend is primarily Python, split between a Django-based application layer and newer FastAPI services for high-throughput internal APIs. You will work on systems where data correctness has direct downstream effects on patient care and reimbursement, and where privacy and compliance (HIPAA) shape almost every design decision.
+
+Responsibilities
+
+- Design and build backend services and APIs in Python (Django and FastAPI) that power both internal tooling and partner-facing integrations.
+- Own data pipelines that ingest data from external partners in varied formats (HL7, FHIR, flat files, CSV) and normalize it into our canonical schema.
+- Write and review database migrations against PostgreSQL, with attention to backward compatibility and safe rollout on large tables.
+- Design async workflows using Celery (or similar) for long-running or bursty jobs — claims processing, report generation, batch imports.
+- Partner with the security and compliance team to ensure new features meet HIPAA requirements for data handling, access control, and audit logging.
+- Improve test coverage and CI reliability; write integration tests against realistic fixtures rather than only mocking everything.
+- Participate in code review with a focus on data correctness, security, and maintainability, not just style.
+- Help evolve our API surface toward more FastAPI-based async services where the workload justifies it, while keeping the Django monolith healthy where it's still the right tool.
+- Take part in an on-call rotation for backend services, including our data ingestion pipelines.
+- Work directly with product and clinical operations stakeholders to translate ambiguous requirements into shippable, well-scoped work.
+
+Requirements
+
+- 5+ years of professional backend engineering experience, with the majority of that time in Python.
+- Strong experience with Django (models, migrations, ORM query optimization) and/or FastAPI for building production APIs.
+- Solid understanding of relational database design, including normalization tradeoffs, indexing, and writing safe migrations against tables with hundreds of millions of rows.
+- Experience with asynchronous task processing (Celery, RQ, or similar) and the operational challenges that come with it (retries, idempotency, dead-letter handling).
+- Comfortable working with REST APIs professionally, including authentication/authorization patterns (OAuth2, JWT) and rate limiting.
+- Experience writing tests with pytest and thinking about what needs unit vs. integration coverage.
+- Familiarity with containerized deployments (Docker) and basic cloud infrastructure (AWS or GCP).
+- Strong written communication — this role involves cross-functional work with compliance, clinical ops, and partner engineering teams who are not always technical.
+
+Nice to have
+
+- Experience in healthcare, insurance, or another regulated industry where data privacy carries legal weight.
+- Familiarity with HL7/FHIR standards or other healthcare data interoperability formats.
+- Experience with data pipeline tools such as Airflow or Dagster for orchestrating ingestion jobs.
+- Exposure to type-checked Python (mypy or pyright) in a large codebase.
+- Experience mentoring other engineers or leading a small project workstream.
+- Prior experience with SOC 2 or HIPAA audits from an engineering perspective.
+
+Why join us
+
+You'll be working on problems where the code you write has a real, traceable effect on whether a clinic gets paid on time or a patient's record is accurate. We keep the team senior-heavy on purpose — less process, more trust, and design discussions happen in writing before code gets written. Fully remote within the US, with a strong benefits package including full health coverage (unsurprisingly) and a real, respected on-call rotation with compensation for pages outside business hours.

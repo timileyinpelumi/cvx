@@ -1,0 +1,42 @@
+Senior Data Engineer
+
+About the role
+
+A fintech company processing consumer lending data is hiring a Senior Data Engineer to build and scale the pipelines that turn raw transactional and third-party data into trustworthy datasets used for underwriting models, reporting, and internal analytics. Data correctness here has direct financial consequences, so this role has a strong emphasis on data quality, lineage, and reproducibility, not just moving data from A to B.
+
+Responsibilities
+
+- Design, build, and operate batch and streaming data pipelines using Airflow (orchestration) and Spark/PySpark (processing) at meaningful scale.
+- Own our dbt-based transformation layer: model design, testing, documentation, and keeping the DAG maintainable as it grows.
+- Build and maintain ingestion pipelines from varied sources — internal application databases, third-party credit bureau APIs, and partner data feeds.
+- Design our data warehouse schema (Snowflake) with attention to query performance, cost, and usability for downstream analysts and data scientists.
+- Implement data quality checks and monitoring so that bad data is caught at ingestion, not discovered three dashboards downstream.
+- Partner with the ML team to build reliable feature pipelines feeding underwriting models, including backfills that must reproduce historical model inputs exactly.
+- Improve data lineage and documentation so that any dataset's provenance can be traced without asking the one person who remembers building it.
+- Optimize pipeline cost and performance — this includes real Spark tuning work, not just adding more compute.
+- Participate in on-call for critical data pipelines, particularly those feeding time-sensitive underwriting decisions.
+- Collaborate with data analysts and data scientists to understand their needs and turn ad hoc requests into well-modeled, reusable datasets.
+
+Requirements
+
+- 5+ years of experience in data engineering, with production experience building and operating pipelines at scale.
+- Strong experience with Apache Airflow (or a comparable orchestrator like Dagster) for scheduling and monitoring complex DAGs.
+- Hands-on experience with Spark (PySpark preferred) for large-scale batch processing, including performance tuning.
+- Proficiency in SQL and experience with dbt for building and testing transformation layers.
+- Experience with a cloud data warehouse (Snowflake, BigQuery, or Redshift) including schema design and cost-conscious query patterns.
+- Strong Python skills for pipeline code, testing, and tooling.
+- Practical understanding of data quality practices: schema validation, anomaly detection, and building trust into pipelines rather than bolting it on after incidents.
+- Experience with version control, CI/CD for data pipelines, and treating pipeline code with the same rigor as application code.
+
+Nice to have
+
+- Experience in fintech, lending, or another domain where data errors have direct financial or compliance consequences.
+- Familiarity with streaming systems (Kafka, Flink) for near-real-time pipelines.
+- Experience with feature stores or ML pipeline infrastructure supporting production models.
+- Exposure to data cataloging/lineage tools (e.g., DataHub, OpenLineage, Amundsen).
+- Experience with infrastructure-as-code (Terraform) for provisioning data infrastructure.
+- Familiarity with LLM-assisted data workflows (e.g., using an LLM to help classify or extract structure from unstructured text fields) in a production pipeline.
+
+Why join us
+
+We take data quality seriously because bad data here means bad lending decisions, not just a wrong number on a dashboard. You'll work closely with both engineering and the risk/underwriting team, giving you real visibility into how your pipelines are used downstream. Fully remote, competitive compensation, and a small, senior data team where you'll own real systems rather than a narrow slice of one.

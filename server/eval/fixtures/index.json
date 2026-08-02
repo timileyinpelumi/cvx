@@ -1,0 +1,14 @@
+[
+  {"id": "backend-go", "file": "jd-backend-go.txt", "title": "Senior Backend Engineer (Go)"},
+  {"id": "backend-python", "file": "jd-backend-python.txt", "title": "Senior Backend Engineer (Python)"},
+  {"id": "backend-node", "file": "jd-backend-node.txt", "title": "Senior Backend Engineer (Node.js / TypeScript)"},
+  {"id": "frontend-react", "file": "jd-frontend-react.txt", "title": "Senior Frontend Engineer (React / TypeScript)"},
+  {"id": "fullstack", "file": "jd-fullstack.txt", "title": "Fullstack Engineer (React / Node)"},
+  {"id": "devops-sre", "file": "jd-devops-sre.txt", "title": "Site Reliability Engineer"},
+  {"id": "platform", "file": "jd-platform.txt", "title": "Platform Engineer"},
+  {"id": "data-engineer", "file": "jd-data-engineer.txt", "title": "Senior Data Engineer"},
+  {"id": "ml-engineer", "file": "jd-ml-engineer.txt", "title": "Machine Learning Engineer (LLM / MLOps)"},
+  {"id": "mobile", "file": "jd-mobile.txt", "title": "Senior Mobile Engineer (React Native)"},
+  {"id": "web3-solidity", "file": "jd-web3-solidity.txt", "title": "Smart Contract Engineer (Solidity)"},
+  {"id": "security", "file": "jd-security.txt", "title": "Senior Application Security Engineer"}
+]

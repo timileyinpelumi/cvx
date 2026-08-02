@@ -1,0 +1,46 @@
+Senior Backend Engineer (Go)
+
+About the role
+
+A payments infrastructure company is looking for a Senior Backend Engineer to join the core ledger team. We process financial transactions for thousands of merchants and need engineers who treat correctness, auditability, and uptime as first-class requirements, not afterthoughts. You will design and operate the Go services that sit at the center of money movement: authorization, settlement, and reconciliation. This is a backend-heavy role with real production ownership from day one, including on-call rotation once ramped up.
+
+What you will do
+
+- Design, build, and maintain backend microservices in Go that process high-volume financial transactions with strict correctness and idempotency guarantees.
+- Own the full lifecycle of services you build: API design, data modeling, testing, deployment, monitoring, and incident response.
+- Collaborate with product and front-end teams to define clear API contracts (REST and gRPC) and evolve them without breaking downstream consumers.
+- Improve observability across the ledger stack — structured logging, distributed tracing, and actionable alerting tied to SLOs.
+- Participate in architecture reviews and write RFCs for significant system changes, especially anything touching data consistency or the money-movement path.
+- Mentor mid-level and junior engineers through code review, pairing, and design discussions.
+- Work with the platform team to run services reliably in a Kubernetes environment on AWS, including capacity planning and cost awareness.
+- Drive down toil by automating repetitive operational work (schema migrations, backfills, reconciliation jobs).
+- Participate in an on-call rotation (roughly one week in six) supporting production services you and your team own.
+
+What we are looking for
+
+- 5+ years of professional backend software engineering experience, with at least 3 years writing production Go.
+- Deep understanding of concurrency in Go (goroutines, channels, sync primitives) and experience debugging real concurrency bugs in production.
+- Strong grasp of distributed systems fundamentals: idempotency, exactly-once vs. at-least-once delivery, eventual consistency, and the tradeoffs between them.
+- Experience with relational databases (PostgreSQL preferred) including schema design, indexing strategy, query optimization, and safe migrations at scale.
+- Hands-on experience with asynchronous messaging systems such as Kafka, RabbitMQ, or SQS for decoupling services.
+- Comfortable with containerization and orchestration (Docker, Kubernetes) and reading/writing basic Terraform for the infrastructure your services depend on.
+- A track record of writing tests that actually catch regressions — unit, integration, and where relevant, property-based or fuzz tests for critical business logic.
+- Experience with REST and/or gRPC API design, including versioning and backward compatibility strategies.
+- Clear written and verbal communication; comfortable writing design docs and giving/receiving direct code review feedback.
+
+Nice to have
+
+- Experience in a regulated or high-compliance environment (payments, banking, healthcare) where auditability and data integrity are non-negotiable.
+- Familiarity with double-entry accounting or ledger systems.
+- Experience with observability tooling such as Prometheus, Grafana, Datadog, or OpenTelemetry.
+- Contributions to open-source Go projects or libraries.
+- Experience leading incident response and writing blameless postmortems.
+- Exposure to event sourcing or CQRS patterns.
+
+What we offer
+
+Competitive salary and equity, fully remote-friendly with quarterly in-person team gatherings, a strong engineering culture that values write-ups over meetings, a generous learning and conference budget, and a team that takes on-call seriously enough to actually fix root causes instead of just paging people. We are a small, senior-leaning team — you will have real influence over how the system is built, not just where you're told to plug in.
+
+How we work
+
+We favor small, incremental changes with fast code review turnaround over big-bang rewrites. Every non-trivial change gets a short design doc before implementation. We run blameless postmortems after incidents and treat them as a source of engineering work, not blame. We believe strongly in testing the paths that touch money, and we would rather ship slower and correct than fast and wrong.

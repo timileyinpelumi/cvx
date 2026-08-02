@@ -1,0 +1,41 @@
+Senior Mobile Engineer (React Native)
+
+About the role
+
+A consumer fitness app with several million monthly active users is hiring a Senior Mobile Engineer to help lead our React Native codebase across iOS and Android. Our app is performance-sensitive (live workout tracking, sensor data, video playback) and needs engineers who are comfortable dropping into native Swift or Kotlin code when React Native's abstractions aren't enough, not just working entirely within JavaScript.
+
+Responsibilities
+
+- Design and build high-complexity, high-visibility features across both iOS and Android using React Native and TypeScript.
+- Write native modules in Swift (iOS) and Kotlin (Android) when a feature needs to reach outside what React Native exposes — deep device APIs, background processing, sensor access.
+- Own app performance: startup time, JS thread responsiveness during real-time workout tracking, memory usage, and smooth 60fps interactions.
+- Manage the native build pipelines for both platforms (Xcode/CocoaPods for iOS, Gradle for Android) and keep CI reliable as dependencies evolve.
+- Debug hard cross-platform issues that show up differently (or only) on one platform, often requiring native-level debugging tools.
+- Collaborate with backend engineers on API design for mobile-specific needs: offline support, sync conflict resolution, and payload size optimization for constrained networks.
+- Participate in app release management: coordinating App Store and Play Store releases, phased rollouts, and monitoring crash rates post-release.
+- Mentor other mobile engineers and help set technical direction for the React Native architecture, including evaluating the New Architecture (Fabric/TurboModules) adoption.
+- Own quality for your features: write tests where they add real value and manually verify on both platforms before shipping.
+
+Requirements
+
+- 5+ years of mobile development experience, with at least 3 years working in React Native in a production app with real scale.
+- Strong TypeScript and React fundamentals, plus a working understanding of React Native internals (the bridge, JSI, and how the New Architecture changes that model).
+- Proficiency in Swift for iOS and Kotlin for Android sufficient to write and maintain native modules, not just call existing ones.
+- Experience with native build tooling: Xcode/CocoaPods for iOS and Gradle for Android, including diagnosing build and dependency issues.
+- Practical experience with mobile performance profiling — identifying and fixing jank, slow startup, or memory leaks using platform-appropriate tools.
+- Experience with offline-first or sync-heavy mobile architectures, including handling flaky connectivity gracefully.
+- Familiarity with app store release processes for both iOS and Android, including phased rollouts and crash monitoring (Crashlytics, Sentry, or similar).
+- Strong collaboration skills — this role bridges mobile, backend, and design closely.
+
+Nice to have
+
+- Experience with real-time sensor data (health/fitness wearables, Bluetooth LE devices) on mobile.
+- Experience with video playback/streaming on mobile (custom players, adaptive bitrate).
+- Background in fully native iOS or Android development before moving to React Native.
+- Experience leading a React Native New Architecture migration in a real app.
+- Familiarity with mobile CI/CD tooling (Fastlane, EAS, Bitrise) for automating build and release pipelines.
+- Experience with push notification infrastructure and deep linking at scale.
+
+What we offer
+
+A mobile-first product where performance and polish genuinely matter to millions of daily users, a team that invests real time in native-level problems rather than papering over them with workarounds, and a healthy on-call rotation for release-related and crash-rate issues. Remote-friendly with a home base in Austin for those who want an office, competitive salary, and equity.

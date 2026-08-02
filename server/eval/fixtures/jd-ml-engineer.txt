@@ -1,0 +1,40 @@
+Machine Learning Engineer (LLM / MLOps)
+
+About the role
+
+A customer support automation company is hiring a Machine Learning Engineer to help build and operate the models and infrastructure behind our AI-assisted support product. Our system combines retrieval-augmented generation over customer knowledge bases with fine-tuned classification models for routing and intent detection. We need someone who is equally comfortable with the modeling side (evaluation, fine-tuning, prompt/RAG design) and the production side (serving, monitoring, cost control) — this is not a research role, it's a build-and-operate role.
+
+What you'll do
+
+- Design and build retrieval-augmented generation (RAG) pipelines over customer-specific knowledge bases, including chunking strategy, embedding model selection, and retrieval quality evaluation.
+- Fine-tune and evaluate smaller classification/routing models where a full LLM call is unnecessary or too costly at our volume.
+- Build robust evaluation pipelines (offline and online) to measure model quality — this includes designing rubrics, building eval sets, and tracking regressions across prompt and model changes.
+- Own the production serving path for ML components: latency, cost, and reliability of LLM calls and embedding lookups at scale.
+- Build MLOps infrastructure for reproducible training, versioned datasets, and safe rollout of model changes (shadow testing, canary rollout, rollback).
+- Monitor deployed models for drift, degraded performance, and edge cases that need to be added to eval sets.
+- Collaborate with product to define what "good" looks like for a given AI feature, and turn that into measurable, trackable metrics.
+- Work with backend engineers to integrate ML services cleanly into the broader product, including designing sane APIs and fallback behavior when a model call fails or is too slow.
+- Stay current with the fast-moving LLM landscape and make pragmatic build-vs-buy calls about when to use a hosted model API vs. self-hosting.
+
+What we're looking for
+
+- 4+ years of experience in machine learning engineering, with real production experience (not only research/notebook work).
+- Strong Python skills, including experience with ML frameworks (PyTorch preferred) and typical ML tooling (pandas, numpy, scikit-learn).
+- Hands-on experience building LLM-based systems in production: prompt engineering, RAG pipelines, and awareness of failure modes (hallucination, retrieval quality, prompt injection).
+- Experience with MLOps practices and tooling: experiment tracking, model versioning, and CI/CD for ML (MLflow, Weights & Biases, or similar).
+- Understanding of how to design and run offline evaluations for generative model quality, not just accuracy metrics from a classification task.
+- Experience deploying models to production, including containerization (Docker) and orchestration (Kubernetes), and being accountable for their latency/cost/reliability.
+- Comfortable with the ambiguity of evaluating generative AI quality — you can design a rubric and defend it, not just report a loss curve.
+
+Nice to have
+
+- Experience fine-tuning open-weight LLMs (e.g., Llama-family models) including LoRA/PEFT techniques.
+- Experience with vector databases (Pinecone, Weaviate, pgvector) and tuning retrieval quality in a real product.
+- Familiarity with hosted LLM APIs across multiple providers and building provider-agnostic abstractions.
+- Experience with prompt injection defenses and building guardrails around user-facing generative features.
+- Background in NLP before the current LLM era (classical text classification, NER, etc.) — useful context for knowing when a smaller model beats an LLM call.
+- Experience communicating model limitations clearly to non-technical stakeholders and setting realistic expectations for what AI features can and cannot do.
+
+Compensation and culture
+
+We're a small, applied ML team embedded closely with product and backend engineering — this is not an ML team siloed off writing papers. Competitive salary and equity, remote-first, and a strong bias toward shipping evaluated, monitored improvements over chasing benchmark numbers that don't reflect real usage.

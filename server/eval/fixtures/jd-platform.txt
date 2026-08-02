@@ -1,0 +1,41 @@
+Platform Engineer
+
+About the role
+
+A mid-size e-commerce company with about 120 engineers is hiring a Platform Engineer to build and grow our internal developer platform. As the number of services and teams has grown, so has the cost of context-switching between infrastructure concerns and product work. Your job is to make it fast and safe for any engineer at the company to go from "I have an idea" to "it's running in production," without needing deep infrastructure knowledge to get there.
+
+What you'll do
+
+- Design, build, and operate our internal developer platform (IDP): self-service tooling for provisioning services, databases, queues, and environments.
+- Define golden paths and default configurations (service templates, CI/CD pipeline templates, standard observability wiring) that make the easy path also the correct path.
+- Own core platform infrastructure on Kubernetes, including cluster upgrades, multi-tenancy boundaries, and resource governance across teams.
+- Build and maintain Terraform modules that other engineers can compose without needing to understand every underlying cloud resource.
+- Improve CI/CD systems to make deploys fast, predictable, and safe, including progressive rollout and automated rollback on regression signals.
+- Instrument the platform itself: track adoption of golden paths, time-to-first-deploy for new services, and platform reliability as first-class metrics.
+- Act as an internal partner to product engineering teams — gather feedback on platform pain points and prioritize work that removes the most friction.
+- Maintain platform documentation and run onboarding sessions so the platform is genuinely self-service, not something that requires tribal knowledge.
+- Participate in an on-call rotation for platform-level infrastructure (shared clusters, CI/CD systems, core networking).
+
+What we're looking for
+
+- 5+ years of experience in infrastructure, DevOps, or platform engineering roles, ideally including time spent building tooling for other engineers to use.
+- Strong experience with Kubernetes at an operational level: multi-tenancy, RBAC, resource quotas, networking policies, and cluster lifecycle management.
+- Solid Terraform experience, including designing reusable modules with sane defaults and guardrails.
+- Proficiency in at least one programming language (Go or Python preferred) for building platform tooling, CLIs, or operators.
+- Experience with CI/CD pipeline design at an organizational level — not just "make my pipeline work" but "make everyone's pipeline consistent and safe."
+- A product mindset toward internal tooling: you think about internal developers as users with real needs, not just ticket submitters.
+- Strong written communication — a lot of platform work lives or dies on documentation and clear rationale for defaults and constraints.
+- Experience balancing platform standardization against the reality that different teams have genuinely different needs.
+
+Nice to have
+
+- Experience building or operating a Kubernetes operator or custom controller.
+- Familiarity with GitOps tooling (ArgoCD, Flux) for declarative, auditable deployments.
+- Experience with service mesh or API gateway technology for platform-level traffic management.
+- Background working directly with product engineering teams before moving into platform work — it helps to have felt the pain you're now solving.
+- Experience with cost visibility/allocation tooling (e.g., Kubecost) across a multi-team Kubernetes environment.
+- Contributions to CNCF projects or other open-source platform tooling.
+
+Why this role
+
+Platform work here is treated as a product with real internal customers, not a cost center. You'll have significant autonomy to decide what to build next based on where developer friction is highest, backed by usage data rather than the loudest complaint. Fully remote, competitive compensation, and a team that measures success by how invisible good infrastructure becomes.

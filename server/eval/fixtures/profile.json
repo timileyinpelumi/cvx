@@ -1,0 +1,199 @@
+{
+  "name": "Alex Okonkwo",
+  "email": "alex.okonkwo@example.com",
+  "phone": "+234 801 234 5678",
+  "location": "Lagos, Nigeria",
+  "summary": "Backend-leaning software engineer with 9+ years building and operating production systems in Go, Python, and TypeScript, from payments ledgers to healthcare data pipelines. Comfortable owning services end to end — design, on-call, and everything between — and shipping across the stack when a small team needs it.",
+  "links": [
+    {"label": "GitHub", "url": "https://github.com/alexokonkwo"},
+    {"label": "LinkedIn", "url": "https://linkedin.com/in/alexokonkwo"}
+  ],
+  "skills": [
+    "Go", "Python", "TypeScript", "Node.js", "React", "PostgreSQL",
+    "Kubernetes", "Docker", "Kafka", "gRPC", "REST API Design", "Solidity",
+    "Foundry", "Distributed Systems", "System Design", "Observability",
+    "CI/CD", "Django"
+  ],
+  "items": [
+    {
+      "id": "item-0",
+      "kind": "work",
+      "title": "Senior Backend Engineer",
+      "organization": "Kolo Pay",
+      "startDate": "2022-03",
+      "endDate": "Present",
+      "bullets": [
+        {
+          "id": "item-0-b-0",
+          "text": "Designed and shipped a Go-based ledger service handling double-entry postings for 40,000+ daily merchant transactions, cutting settlement reconciliation errors by 92% versus the legacy spreadsheet process.",
+          "skills": ["Go", "PostgreSQL", "Distributed Systems"]
+        },
+        {
+          "id": "item-0-b-1",
+          "text": "Rebuilt the payment authorization path around idempotent Kafka consumers, eliminating duplicate-charge incidents that had previously caused roughly 15 support escalations per month.",
+          "skills": ["Go", "Kafka", "Distributed Systems"]
+        },
+        {
+          "id": "item-0-b-2",
+          "text": "Migrated authorization and settlement services from a monolith to independently deployable Go microservices on Kubernetes (EKS), reducing p95 authorization latency from 640ms to 180ms.",
+          "skills": ["Go", "Kubernetes", "gRPC"]
+        },
+        {
+          "id": "item-0-b-3",
+          "text": "Introduced structured logging and OpenTelemetry tracing across 12 services, cutting mean incident diagnosis time from about 45 minutes to under 10.",
+          "skills": ["Observability", "Go", "System Design"]
+        },
+        {
+          "id": "item-0-b-4",
+          "text": "Led a 6-person on-call rotation and authored the team's incident postmortem process, driving a measurable drop in repeat incidents quarter over quarter.",
+          "skills": ["Incident Response", "Leadership", "System Design"]
+        }
+      ]
+    },
+    {
+      "id": "item-1",
+      "kind": "work",
+      "title": "Backend Engineer",
+      "organization": "Meridian Health Analytics",
+      "startDate": "2019-06",
+      "endDate": "2022-02",
+      "bullets": [
+        {
+          "id": "item-1-b-0",
+          "text": "Built a Django/FastAPI hybrid backend ingesting HL7 and claims data from 30+ partner clinics, normalizing records into a canonical PostgreSQL schema used by downstream reporting.",
+          "skills": ["Python", "Django", "PostgreSQL"]
+        },
+        {
+          "id": "item-1-b-1",
+          "text": "Designed Celery-based async pipelines for nightly claims batch processing, cutting processing time for a 2-million-row nightly job from 6 hours to 50 minutes.",
+          "skills": ["Python", "Distributed Systems"]
+        },
+        {
+          "id": "item-1-b-2",
+          "text": "Implemented row-level access control and audit logging to meet HIPAA-adjacent data handling requirements ahead of a customer security review.",
+          "skills": ["PostgreSQL", "System Design"]
+        },
+        {
+          "id": "item-1-b-3",
+          "text": "Wrote and safely rolled out 40+ zero-downtime PostgreSQL migrations against tables exceeding 200 million rows using online schema-change tooling.",
+          "skills": ["PostgreSQL", "Django"]
+        },
+        {
+          "id": "item-1-b-4",
+          "text": "Partnered with the clinical operations team to redesign the claims-intake API, cutting partner integration time from several weeks to under 3 days.",
+          "skills": ["REST API Design", "Python"]
+        }
+      ]
+    },
+    {
+      "id": "item-2",
+      "kind": "work",
+      "title": "Fullstack Engineer",
+      "organization": "Loom Labs",
+      "startDate": "2017-08",
+      "endDate": "2019-05",
+      "bullets": [
+        {
+          "id": "item-2-b-0",
+          "text": "Built the core React/TypeScript invoicing and reconciliation UI for an early-stage SMB accounting product, taken from prototype to the first 500 paying customers.",
+          "skills": ["React", "TypeScript"]
+        },
+        {
+          "id": "item-2-b-1",
+          "text": "Designed and implemented a Node.js/Express REST API and PostgreSQL schema powering the product's core ledger, invoicing, and customer records.",
+          "skills": ["Node.js", "PostgreSQL", "REST API Design"]
+        },
+        {
+          "id": "item-2-b-2",
+          "text": "Integrated Stripe for subscription billing and payment reconciliation, handling webhook-driven state sync between Stripe and internal records.",
+          "skills": ["Node.js", "System Design"]
+        },
+        {
+          "id": "item-2-b-3",
+          "text": "Worked directly with the two founders and early customers to scope and ship features end to end on a weekly release cadence.",
+          "skills": ["React", "Node.js"]
+        }
+      ]
+    },
+    {
+      "id": "item-3",
+      "kind": "project",
+      "title": "Aurora Lend Protocol",
+      "organization": "Personal project",
+      "startDate": "2023-01",
+      "endDate": "2023-08",
+      "bullets": [
+        {
+          "id": "item-3-b-0",
+          "text": "Designed and implemented core Solidity smart contracts for a lending and collateral protocol, including collateralized borrowing, liquidation logic, and interest accrual.",
+          "skills": ["Solidity", "Distributed Systems"]
+        },
+        {
+          "id": "item-3-b-1",
+          "text": "Wrote a Foundry test suite with fuzz and invariant tests covering liquidation edge cases, reaching over 95% branch coverage on the core contracts.",
+          "skills": ["Foundry", "Solidity"]
+        },
+        {
+          "id": "item-3-b-2",
+          "text": "Optimized contract storage layout and reduced gas cost of the core deposit function by 34% ahead of a third-party audit.",
+          "skills": ["Solidity", "System Design"]
+        },
+        {
+          "id": "item-3-b-3",
+          "text": "Prepared audit documentation and resolved all high- and medium-severity findings from an external security review before mainnet deployment.",
+          "skills": ["Solidity", "Foundry"]
+        }
+      ]
+    },
+    {
+      "id": "item-4",
+      "kind": "project",
+      "title": "pgtrail — open-source maintainer",
+      "organization": "Open source",
+      "startDate": "2021-04",
+      "endDate": "Present",
+      "bullets": [
+        {
+          "id": "item-4-b-0",
+          "text": "Created and maintain pgtrail, an open-source Go CLI for auditable, reversible PostgreSQL schema migrations, with over 1,400 GitHub stars.",
+          "skills": ["Go", "PostgreSQL"]
+        },
+        {
+          "id": "item-4-b-1",
+          "text": "Designed the plugin architecture that let external contributors add MySQL and SQLite support without touching the core migration engine.",
+          "skills": ["Go", "System Design"]
+        },
+        {
+          "id": "item-4-b-2",
+          "text": "Reviewed and merged 150+ community pull requests and triaged incoming issues, growing the active contributor base from 2 to 20.",
+          "skills": ["Go", "CI/CD"]
+        }
+      ]
+    },
+    {
+      "id": "item-5",
+      "kind": "education",
+      "title": "B.Sc. Computer Science",
+      "organization": "University of Lagos",
+      "startDate": "2013-09",
+      "endDate": "2017-07",
+      "bullets": [
+        {
+          "id": "item-5-b-0",
+          "text": "Graduated with First Class Honours in Computer Science, with coursework concentrated in distributed systems and databases.",
+          "skills": ["Distributed Systems", "System Design"]
+        },
+        {
+          "id": "item-5-b-1",
+          "text": "Final-year project: built a distributed key-value store implementing the Raft consensus algorithm in Go.",
+          "skills": ["Go", "Distributed Systems"]
+        },
+        {
+          "id": "item-5-b-2",
+          "text": "Served as a teaching assistant for the Data Structures and Algorithms course for two semesters.",
+          "skills": ["System Design"]
+        }
+      ]
+    }
+  ]
+}
