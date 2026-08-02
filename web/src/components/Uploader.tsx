@@ -90,9 +90,11 @@ export function Uploader({ onUploaded, replace = false }: UploaderProps) {
       onDragOver={handleDragOver}
       onDragLeave={() => setDragging(false)}
     >
-      <h2 className="uploader-heading">
-        {replace ? "Replace your resume" : "Start with your current resume"}
-      </h2>
+      {/* In replace mode the toggle that revealed this card already names the
+          action, so a heading here would only stutter. */}
+      {replace ? null : (
+        <h2 className="uploader-heading">Start with your current resume</h2>
+      )}
       <p className="uploader-body">
         {replace
           ? "Upload a new PDF. cvx reads it in and replaces the profile it holds now."

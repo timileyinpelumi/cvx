@@ -50,7 +50,7 @@ function readForbidden() {
 }
 
 export function SignIn() {
-  const [providers, setProviders] = useState<string[]>([]);
+  const [providers, setProviders] = useState<string[] | null>(null);
   // The OAuth callback sends denied accounts to /?error=forbidden.
   const forbidden = useSyncExternalStore(
     noopSubscribe,
@@ -63,12 +63,13 @@ export function SignIn() {
     async function load() {
       try {
         const res = await fetch("/auth/providers");
-        if (!res.ok) return;
+        if (!res.ok) throw new Error(String(res.status));
         const data = (await res.json()) as { providers?: string[] };
         if (!cancelled) setProviders(data.providers ?? []);
       } catch {
-        // Nothing to offer if the list can't be read; the card stays bare
-        // rather than showing a button that cannot work.
+        // An empty list reads the same as a failed one: there is no way in,
+        // and the only thing the reader can do about it is try again.
+        if (!cancelled) setProviders([]);
       }
     }
     void load();
@@ -77,23 +78,27 @@ export function SignIn() {
     };
   }, []);
 
+  // null while the list is still in flight, so the fallback notice can't
+  // flash before there is anything to say.
+  const usable = (providers ?? []).filter(
+    (provider) => provider in PROVIDER_LABELS,
+  );
+
   return (
     <div className="signin">
       <h2 className="signin-heading">Sign in to cvx</h2>
 
       <div className="signin-providers">
-        {providers
-          .filter((provider) => provider in PROVIDER_LABELS)
-          .map((provider) => (
-            <a
-              key={provider}
-              className="btn btn--secondary"
-              href={`/auth/${provider}/start`}
-            >
-              {provider === "google" ? <GoogleMark /> : <GitHubMark />}
-              {PROVIDER_LABELS[provider]}
-            </a>
-          ))}
+        {usable.map((provider) => (
+          <a
+            key={provider}
+            className="btn btn--secondary"
+            href={`/auth/${provider}/start`}
+          >
+            {provider === "google" ? <GoogleMark /> : <GitHubMark />}
+            {PROVIDER_LABELS[provider]}
+          </a>
+        ))}
       </div>
 
       <div className="notice-slot" role="status">
@@ -101,6 +106,9 @@ export function SignIn() {
           <p className="notice notice--error">
             This account doesn&apos;t have access.
           </p>
+        ) : null}
+        {providers !== null && usable.length === 0 ? (
+          <p className="notice">Can&apos;t reach the server. Reload to try again.</p>
         ) : null}
       </div>
     </div>

@@ -307,6 +307,12 @@
 
 /* -------------------------------------------------------------- sign-in -- */
 
+/* With no provider to offer, the row must not hold space above the notice
+   that explains why. */
+.signin-providers:empty {
+  display: none;
+}
+
 .signin-providers {
   display: flex;
   flex-direction: column;
@@ -383,23 +389,30 @@
 
 /* ----------------------------------------------------------- profile update -- */
 
+/* No gap between the two disclosures: their 44px targets already carry the
+   air, and the pair should read as one short list of profile actions. */
 .profile-update {
-  margin-bottom: 20px;
+  margin-bottom: 0;
 }
 
-.profile-update-toggle {
+/* Both profile disclosures share one treatment: add and replace are the same
+   kind of action, so neither may out-shout the other. */
+.profile-update-toggle,
+.profile-replace-toggle {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
   padding: 0;
   background: none;
   border: none;
+  font-family: var(--font-body);
   font-size: 14px;
   color: var(--ink);
   cursor: pointer;
 }
 
-.profile-update-toggle:hover {
+.profile-update-toggle:hover,
+.profile-replace-toggle:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }

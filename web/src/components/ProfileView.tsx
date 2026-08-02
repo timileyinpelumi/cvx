@@ -54,9 +54,11 @@ export function ProfileView({
       <ProfileUpdate onUpdated={onProfile} />
 
       <div className="profile-replace">
+        {/* Deliberately the lighter of the two disclosures: replacing the
+            profile throws away what upload and every note have built up. */}
         <button
           type="button"
-          className="btn btn--secondary btn--block"
+          className="profile-replace-toggle"
           aria-expanded={replacing}
           onClick={() => setReplacing((open) => !open)}
         >
