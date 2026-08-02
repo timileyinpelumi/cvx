@@ -169,7 +169,11 @@ export default function Home() {
 
         {navigating && view === "gaps" ? (
           gapTrends.length > 0 ? (
-            <GapTracker trends={gapTrends} total={gapTotal} />
+            <GapTracker
+              trends={gapTrends}
+              total={gapTotal}
+              onProfileChanged={() => void loadProfile()}
+            />
           ) : (
             <p className="view-empty">
               No recurring gaps yet. They show up after a few generations.

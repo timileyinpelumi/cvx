@@ -1,5 +1,7 @@
 "use client";
 
+import { GapFill } from "./GapFill";
+
 export type GapTrend = {
   requirement: string;
   count: number;
@@ -11,9 +13,10 @@ export type GapTrend = {
 type GapTrackerProps = {
   trends: GapTrend[];
   total: number;
+  onProfileChanged?: () => void;
 };
 
-export function GapTracker({ trends, total }: GapTrackerProps) {
+export function GapTracker({ trends, total, onProfileChanged }: GapTrackerProps) {
   if (trends.length === 0) return null;
 
   return (
@@ -36,6 +39,10 @@ export function GapTracker({ trends, total }: GapTrackerProps) {
               </span>
             </div>
             <p className="gap-tracker-evidence">{trend.lastEvidence}</p>
+            <GapFill
+              context={`${trend.requirement} — ${trend.lastEvidence}`}
+              onFilled={() => onProfileChanged?.()}
+            />
           </li>
         ))}
       </ul>
