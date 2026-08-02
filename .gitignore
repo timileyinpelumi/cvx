@@ -1,4 +1,5 @@
 server/data/
 server/.env
+server/eval/results/
 web/node_modules/
 web/.next/

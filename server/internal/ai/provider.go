@@ -64,3 +64,36 @@ func NewFromEnv() (LLM, string, error) {
 		return nil, "", fmt.Errorf("unknown CVX_LLM_PROVIDER %q (want groq, openai, or anthropic)", provider)
 	}
 }
+
+// NewWithProviderModel builds the LLM implementation for an explicit
+// provider/model pair, independent of CVX_LLM_PROVIDER/CVX_LLM_MODEL. Used by
+// cvxeval to construct a judge LLM that can be a different provider/model
+// than the generator under test, while still reading each provider's API key
+// from its usual env var.
+func NewWithProviderModel(provider, model string) (LLM, error) {
+	switch provider {
+	case "groq":
+		key := os.Getenv("GROQ_API_KEY")
+		if key == "" {
+			return nil, fmt.Errorf("missing GROQ_API_KEY for provider groq")
+		}
+		return newOpenAICompat(groqBaseURL, key, model, false), nil
+
+	case "openai":
+		key := os.Getenv("OPENAI_API_KEY")
+		if key == "" {
+			return nil, fmt.Errorf("missing OPENAI_API_KEY for provider openai")
+		}
+		return newOpenAICompat(openAIBaseURL, key, model, true), nil
+
+	case "anthropic":
+		key := os.Getenv("ANTHROPIC_API_KEY")
+		if key == "" {
+			return nil, fmt.Errorf("missing ANTHROPIC_API_KEY for provider anthropic")
+		}
+		return NewAnthropicWithModel(model), nil
+
+	default:
+		return nil, fmt.Errorf("unknown provider %q (want groq, openai, or anthropic)", provider)
+	}
+}

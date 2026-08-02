@@ -117,3 +117,79 @@ func TestNewFromEnvAnthropicMissingKey(t *testing.T) {
 		t.Fatalf("want error naming ANTHROPIC_API_KEY, got %v", err)
 	}
 }
+
+func TestNewWithProviderModelGroq(t *testing.T) {
+	clearLLMEnv(t)
+	t.Setenv("GROQ_API_KEY", "gk")
+
+	llm, err := NewWithProviderModel("groq", "llama-3.3-70b-versatile")
+	if err != nil {
+		t.Fatalf("NewWithProviderModel: %v", err)
+	}
+	if llm == nil {
+		t.Fatal("want non-nil LLM")
+	}
+}
+
+func TestNewWithProviderModelGroqMissingKey(t *testing.T) {
+	clearLLMEnv(t)
+
+	if _, err := NewWithProviderModel("groq", "llama-3.3-70b-versatile"); err == nil || !strings.Contains(err.Error(), "GROQ_API_KEY") {
+		t.Fatalf("want error naming GROQ_API_KEY, got %v", err)
+	}
+}
+
+func TestNewWithProviderModelOpenAI(t *testing.T) {
+	clearLLMEnv(t)
+	t.Setenv("OPENAI_API_KEY", "ok")
+
+	llm, err := NewWithProviderModel("openai", "gpt-4.1")
+	if err != nil {
+		t.Fatalf("NewWithProviderModel: %v", err)
+	}
+	if llm == nil {
+		t.Fatal("want non-nil LLM")
+	}
+}
+
+func TestNewWithProviderModelOpenAIMissingKey(t *testing.T) {
+	clearLLMEnv(t)
+
+	if _, err := NewWithProviderModel("openai", "gpt-4.1"); err == nil || !strings.Contains(err.Error(), "OPENAI_API_KEY") {
+		t.Fatalf("want error naming OPENAI_API_KEY, got %v", err)
+	}
+}
+
+func TestNewWithProviderModelAnthropic(t *testing.T) {
+	clearLLMEnv(t)
+	t.Setenv("ANTHROPIC_API_KEY", "ak")
+
+	llm, err := NewWithProviderModel("anthropic", "claude-opus-5")
+	if err != nil {
+		t.Fatalf("NewWithProviderModel: %v", err)
+	}
+	if llm == nil {
+		t.Fatal("want non-nil LLM")
+	}
+}
+
+func TestNewWithProviderModelAnthropicMissingKey(t *testing.T) {
+	clearLLMEnv(t)
+
+	if _, err := NewWithProviderModel("anthropic", "claude-opus-5"); err == nil || !strings.Contains(err.Error(), "ANTHROPIC_API_KEY") {
+		t.Fatalf("want error naming ANTHROPIC_API_KEY, got %v", err)
+	}
+}
+
+func TestNewWithProviderModelUnknownProvider(t *testing.T) {
+	clearLLMEnv(t)
+
+	_, err := NewWithProviderModel("bogus", "some-model")
+	if err == nil {
+		t.Fatal("expected error for unknown provider")
+	}
+	want := `unknown provider "bogus" (want groq, openai, or anthropic)`
+	if err.Error() != want {
+		t.Fatalf("want %q, got %q", want, err.Error())
+	}
+}
