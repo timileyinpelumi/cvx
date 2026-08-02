@@ -11,24 +11,45 @@ import (
 	"time"
 )
 
+// maxOutputTokens bounds a single completion, matching the budget already
+// used for the Anthropic path (see llm.go's MaxTokens: 16000). Without an
+// explicit cap, Groq falls back to a small default that truncates a
+// multi-field JSON response mid-object — the response then fails schema
+// validation with json_validate_failed instead of a clear "too short" error.
+const maxOutputTokens = 16000
+
+// The output-token-budget field is named differently across providers:
+// maxTokensFieldLegacy ("max_tokens") is accepted by both Groq and OpenAI
+// but is deprecated on both in favor of maxTokensFieldModern
+// ("max_completion_tokens") — and on OpenAI, reasoning models (o1/o3/...)
+// reject max_tokens outright, so any provider whose model lineup might
+// include one of those must use the modern field.
+const (
+	maxTokensFieldLegacy = "max_tokens"
+	maxTokensFieldModern = "max_completion_tokens"
+)
+
 // openAICompat is an LLM backed by any OpenAI-chat-completions-compatible
 // endpoint. It serves both OpenAI and Groq — they differ only in baseURL,
-// key, model, and whether the endpoint accepts a PDF file part natively.
+// key, model, whether the endpoint accepts a PDF file part natively, and
+// which JSON field name carries the output-token budget.
 type openAICompat struct {
-	baseURL   string
-	apiKey    string
-	model     string
-	pdfNative bool
-	hc        *http.Client
+	baseURL        string
+	apiKey         string
+	model          string
+	pdfNative      bool
+	maxTokensField string
+	hc             *http.Client
 }
 
-func newOpenAICompat(baseURL, apiKey, model string, pdfNative bool) *openAICompat {
+func newOpenAICompat(baseURL, apiKey, model string, pdfNative bool, maxTokensField string) *openAICompat {
 	return &openAICompat{
-		baseURL:   baseURL,
-		apiKey:    apiKey,
-		model:     model,
-		pdfNative: pdfNative,
-		hc:        &http.Client{Timeout: 120 * time.Second},
+		baseURL:        baseURL,
+		apiKey:         apiKey,
+		model:          model,
+		pdfNative:      pdfNative,
+		maxTokensField: maxTokensField,
+		hc:             &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
@@ -41,6 +62,9 @@ type chatRequest struct {
 	Model          string         `json:"model"`
 	Messages       []chatMessage  `json:"messages"`
 	ResponseFormat responseFormat `json:"response_format"`
+	// Exactly one of these is set, per c.maxTokensField.
+	MaxTokens           int `json:"max_tokens,omitempty"`
+	MaxCompletionTokens int `json:"max_completion_tokens,omitempty"`
 }
 
 type responseFormat struct {
@@ -112,6 +136,11 @@ func (c *openAICompat) GenerateJSON(ctx context.Context, system string, blocks [
 				Schema: schema,
 			},
 		},
+	}
+	if c.maxTokensField == maxTokensFieldModern {
+		reqBody.MaxCompletionTokens = maxOutputTokens
+	} else {
+		reqBody.MaxTokens = maxOutputTokens
 	}
 
 	buf, err := json.Marshal(reqBody)

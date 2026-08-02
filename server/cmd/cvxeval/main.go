@@ -23,7 +23,19 @@ const resultsDir = "eval/results"
 
 const (
 	defaultJudgeProvider = "groq"
-	defaultJudgeModel    = "llama-3.3-70b-versatile"
+	// defaultJudgeModel must support Groq's Structured Outputs (strict
+	// json_schema response_format) — ai.LLM.GenerateJSON always requests
+	// strict:true. As of the 2026-08-02 baseline run, Groq's own docs
+	// (https://console.groq.com/docs/structured-outputs) list ONLY
+	// openai/gpt-oss-20b and openai/gpt-oss-120b under "Models with Strict
+	// Mode" — llama-3.3-70b-versatile is not on that list and rejected the
+	// request outright. gpt-oss-20b is the only other model on it, so it's
+	// the judge default despite sharing a "gpt-oss" lineage with the
+	// generator's own default (gpt-oss-120b): it is still a materially
+	// different, independently-weighted checkpoint, not the same model
+	// grading itself. Revisit if Groq adds a genuinely different-family
+	// model to that support list.
+	defaultJudgeModel = "openai/gpt-oss-20b"
 )
 
 // loadDotEnv sets environment variables from KEY=VALUE lines in path,
@@ -79,7 +91,7 @@ func main() {
 	cover := flag.Bool("cover", false, "also generate and judge cover letters")
 	fixturesDir := flag.String("fixtures", "eval/fixtures", "path to the fixtures directory")
 	judgeProviderFlag := flag.String("judge-provider", "", "override judge provider (default: env CVX_EVAL_JUDGE_PROVIDER, or groq)")
-	judgeModelFlag := flag.String("judge-model", "", "override judge model (default: env CVX_EVAL_JUDGE_MODEL, or llama-3.3-70b-versatile)")
+	judgeModelFlag := flag.String("judge-model", "", "override judge model (default: env CVX_EVAL_JUDGE_MODEL, or openai/gpt-oss-20b)")
 	flag.Parse()
 
 	if *label == "" {

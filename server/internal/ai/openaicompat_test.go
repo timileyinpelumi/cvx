@@ -31,7 +31,7 @@ func TestOpenAICompatRequestShape(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newOpenAICompat(srv.URL, "test-key", "test-model", true)
+	c := newOpenAICompat(srv.URL, "test-key", "test-model", true, maxTokensFieldLegacy)
 	schema := map[string]any{"type": "object"}
 	out, err := c.GenerateJSON(context.Background(), "be helpful", []ContentBlock{{Text: "hello world"}}, schema)
 	if err != nil {
@@ -46,6 +46,12 @@ func TestOpenAICompatRequestShape(t *testing.T) {
 	}
 	if body["model"] != "test-model" {
 		t.Fatalf("want model test-model, got %v", body["model"])
+	}
+	if got, want := body["max_tokens"], float64(maxOutputTokens); got != want {
+		t.Fatalf("want max_tokens=%v, got %v", want, got)
+	}
+	if _, present := body["max_completion_tokens"]; present {
+		t.Fatalf("want no max_completion_tokens field when maxTokensField is legacy, got %v", body["max_completion_tokens"])
 	}
 
 	rf, ok := body["response_format"].(map[string]any)
@@ -96,7 +102,7 @@ func TestOpenAICompatNoSystemMessage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newOpenAICompat(srv.URL, "k", "m", true)
+	c := newOpenAICompat(srv.URL, "k", "m", true, maxTokensFieldLegacy)
 	if _, err := c.GenerateJSON(context.Background(), "", []ContentBlock{{Text: "hi"}}, map[string]any{}); err != nil {
 		t.Fatalf("GenerateJSON: %v", err)
 	}
@@ -115,7 +121,7 @@ func TestOpenAICompatPDFNativeTrue(t *testing.T) {
 	defer srv.Close()
 
 	pdfBytes := makeTestPDF(t, "Golang Engineer")
-	c := newOpenAICompat(srv.URL, "k", "m", true)
+	c := newOpenAICompat(srv.URL, "k", "m", true, maxTokensFieldLegacy)
 	if _, err := c.GenerateJSON(context.Background(), "", []ContentBlock{{PDF: pdfBytes}}, map[string]any{}); err != nil {
 		t.Fatalf("GenerateJSON: %v", err)
 	}
@@ -160,7 +166,7 @@ func TestOpenAICompatPDFNativeFalseExtractsText(t *testing.T) {
 	defer srv.Close()
 
 	pdfBytes := makeTestPDF(t, "Golang Engineer")
-	c := newOpenAICompat(srv.URL, "k", "m", false)
+	c := newOpenAICompat(srv.URL, "k", "m", false, maxTokensFieldLegacy)
 	if _, err := c.GenerateJSON(context.Background(), "", []ContentBlock{{PDF: pdfBytes}}, map[string]any{}); err != nil {
 		t.Fatalf("GenerateJSON: %v", err)
 	}
@@ -194,7 +200,7 @@ func TestOpenAICompatNon2xxError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newOpenAICompat(srv.URL, "bad-key", "m", true)
+	c := newOpenAICompat(srv.URL, "bad-key", "m", true, maxTokensFieldLegacy)
 	_, err := c.GenerateJSON(context.Background(), "", []ContentBlock{{Text: "hi"}}, map[string]any{})
 	if err == nil {
 		t.Fatal("expected error for 401")
@@ -210,12 +216,54 @@ func TestOpenAICompatEmptyChoicesError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newOpenAICompat(srv.URL, "k", "m", true)
+	c := newOpenAICompat(srv.URL, "k", "m", true, maxTokensFieldLegacy)
 	_, err := c.GenerateJSON(context.Background(), "", []ContentBlock{{Text: "hi"}}, map[string]any{})
 	if err == nil {
 		t.Fatal("expected error for empty choices")
 	}
 	if !strings.Contains(err.Error(), "model overloaded") {
 		t.Fatalf("want error to include upstream message, got %v", err)
+	}
+}
+
+func TestOpenAICompatMaxTokensFieldLegacySendsMaxTokens(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body = decodeBody(t, r)
+		w.Write([]byte(`{"choices":[{"message":{"content":"{}"}}]}`))
+	}))
+	defer srv.Close()
+
+	c := newOpenAICompat(srv.URL, "k", "m", true, maxTokensFieldLegacy)
+	if _, err := c.GenerateJSON(context.Background(), "", []ContentBlock{{Text: "hi"}}, map[string]any{}); err != nil {
+		t.Fatalf("GenerateJSON: %v", err)
+	}
+
+	if got, want := body["max_tokens"], float64(maxOutputTokens); got != want {
+		t.Fatalf("want max_tokens=%v, got %v", want, got)
+	}
+	if _, present := body["max_completion_tokens"]; present {
+		t.Fatalf("want no max_completion_tokens field, got %v", body["max_completion_tokens"])
+	}
+}
+
+func TestOpenAICompatMaxTokensFieldModernSendsMaxCompletionTokens(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body = decodeBody(t, r)
+		w.Write([]byte(`{"choices":[{"message":{"content":"{}"}}]}`))
+	}))
+	defer srv.Close()
+
+	c := newOpenAICompat(srv.URL, "k", "m", true, maxTokensFieldModern)
+	if _, err := c.GenerateJSON(context.Background(), "", []ContentBlock{{Text: "hi"}}, map[string]any{}); err != nil {
+		t.Fatalf("GenerateJSON: %v", err)
+	}
+
+	if got, want := body["max_completion_tokens"], float64(maxOutputTokens); got != want {
+		t.Fatalf("want max_completion_tokens=%v, got %v", want, got)
+	}
+	if _, present := body["max_tokens"]; present {
+		t.Fatalf("want no max_tokens field, got %v", body["max_tokens"])
 	}
 }

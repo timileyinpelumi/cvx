@@ -36,7 +36,7 @@ func NewFromEnv() (LLM, string, error) {
 		if modelOverride != "" {
 			model = modelOverride
 		}
-		return newOpenAICompat(groqBaseURL, key, model, false), "groq/" + model, nil
+		return newOpenAICompat(groqBaseURL, key, model, false, maxTokensFieldLegacy), "groq/" + model, nil
 
 	case "openai":
 		key := os.Getenv("OPENAI_API_KEY")
@@ -47,7 +47,7 @@ func NewFromEnv() (LLM, string, error) {
 		if modelOverride != "" {
 			model = modelOverride
 		}
-		return newOpenAICompat(openAIBaseURL, key, model, true), "openai/" + model, nil
+		return newOpenAICompat(openAIBaseURL, key, model, true, maxTokensFieldModern), "openai/" + model, nil
 
 	case "anthropic":
 		key := os.Getenv("ANTHROPIC_API_KEY")
@@ -77,14 +77,14 @@ func NewWithProviderModel(provider, model string) (LLM, error) {
 		if key == "" {
 			return nil, fmt.Errorf("missing GROQ_API_KEY for provider groq")
 		}
-		return newOpenAICompat(groqBaseURL, key, model, false), nil
+		return newOpenAICompat(groqBaseURL, key, model, false, maxTokensFieldLegacy), nil
 
 	case "openai":
 		key := os.Getenv("OPENAI_API_KEY")
 		if key == "" {
 			return nil, fmt.Errorf("missing OPENAI_API_KEY for provider openai")
 		}
-		return newOpenAICompat(openAIBaseURL, key, model, true), nil
+		return newOpenAICompat(openAIBaseURL, key, model, true, maxTokensFieldModern), nil
 
 	case "anthropic":
 		key := os.Getenv("ANTHROPIC_API_KEY")
