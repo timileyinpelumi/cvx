@@ -1012,6 +1012,21 @@
   gap: 20px;
 }
 
+/* Downloads surface on hover to keep rows quiet; opacity (not display)
+   keeps the row height stable and focus-within keeps keyboard users able
+   to tab to them. Touch screens have no hover, so they stay visible. */
+@media (hover: hover) {
+  .archive-actions {
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  .archive-row:hover .archive-actions,
+  .archive-row:focus-within .archive-actions {
+    opacity: 1;
+  }
+}
+
 .archive-action {
   display: inline-flex;
   align-items: center;
