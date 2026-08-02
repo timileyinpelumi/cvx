@@ -213,3 +213,18 @@ var coverLetterSchema = map[string]any{
 	"required":             []string{"greeting", "paragraphs", "closing"},
 	"additionalProperties": false,
 }
+
+// recruiterEmailSchema mirrors model.RecruiterEmail exactly (camelCase keys).
+var recruiterEmailSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"subject": map[string]any{"type": "string"},
+		"paragraphs": map[string]any{
+			"type":  "array",
+			"items": map[string]any{"type": "string"},
+		},
+		"closing": map[string]any{"type": "string"},
+	},
+	"required":             []string{"subject", "paragraphs", "closing"},
+	"additionalProperties": false,
+}

@@ -121,6 +121,12 @@ type CoverLetter struct {
 	Closing    string   `json:"closing"`
 }
 
+type RecruiterEmail struct {
+	Subject    string   `json:"subject"`
+	Paragraphs []string `json:"paragraphs"`
+	Closing    string   `json:"closing"`
+}
+
 func CoverFilename(name, role string) string {
 	clean := func(s string) string { return strings.Trim(nonAlnum.ReplaceAllString(s, "_"), "_") }
 	return clean(name) + "_" + clean(role) + "_Cover_Letter.pdf"
