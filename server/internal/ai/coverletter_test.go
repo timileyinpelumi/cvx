@@ -58,7 +58,12 @@ func TestCoverLetterCallShape(t *testing.T) {
 	if f.system == "" {
 		t.Fatal("expected a system prompt")
 	}
-	for _, phrase := range []string{"em dash", "exclamation", "sentence case", "[Company]", "profile"} {
+	for _, phrase := range []string{
+		"em dash", "exclamation", "sentence case", "[Company]", "profile",
+		// v2 specificity rules.
+		"could only be written about this",
+		"over a gap with enthusiasm",
+	} {
 		if !strings.Contains(f.system, phrase) {
 			t.Fatalf("system prompt missing %q:\n%s", phrase, f.system)
 		}

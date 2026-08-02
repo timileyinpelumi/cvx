@@ -41,15 +41,50 @@ func TestDigitize(t *testing.T) {
 	}
 }
 
+// tailoredSample is a minimal valid Tailor response for digitizedSample's
+// profile.
+const tailoredSample = `{"targetRole":"Python Backend Engineer","headline":"h","summary":"s","selectedSkills":["Python"],
+	"sections":[{"title":"Experience","items":[{"sourceId":"item-0","title":"Engineer","organization":"AE","dates":"2021 – Present",
+	"bullets":[{"sourceBulletId":"item-0-b-0","text":"Built the engine in Python"}]}]}],
+	"gaps":[{"requirement":"Django","evidence":"not in profile","severity":"missing"}],"whatChanged":["led with Python"]}`
+
 func TestTailorValid(t *testing.T) {
 	p := digitizedSample() // helper reusing TestDigitize fixture
-	f := &fakeLLM{out: `{"targetRole":"Python Backend Engineer","headline":"h","summary":"s","selectedSkills":["Python"],
-		"sections":[{"title":"Experience","items":[{"sourceId":"item-0","title":"Engineer","organization":"AE","dates":"2021 – Present",
-		"bullets":[{"sourceBulletId":"item-0-b-0","text":"Built the engine in Python"}]}]}],
-		"gaps":[{"requirement":"Django","evidence":"not in profile","severity":"missing"}],"whatChanged":["led with Python"]}`}
+	f := &fakeLLM{out: tailoredSample}
 	ta, err := Tailor(context.Background(), f, p, "Python Backend Engineer")
 	if err != nil || ta.TargetRole != "Python Backend Engineer" {
 		t.Fatalf("%+v %v", ta, err)
+	}
+}
+
+func TestTailorCallShape(t *testing.T) {
+	p := digitizedSample()
+	f := &fakeLLM{out: tailoredSample}
+
+	if _, err := Tailor(context.Background(), f, p, "Python Backend Engineer"); err != nil {
+		t.Fatal(err)
+	}
+
+	// The load-bearing instructions of the v2 prompt: the guardrail, the
+	// selection/anti-force-fit rule, the anti-stuffing vocabulary rule, and
+	// the verbatim-skills rule that backs the selectedSkillsSubset check.
+	for _, phrase := range []string{
+		"sourceBulletId",
+		"at most 5 items",
+		"2-4 bullets per item",
+		"Never force-fit",
+		"Anti-stuffing",
+		"copied verbatim from the",
+		`"skills" array`,
+		"whatChanged",
+	} {
+		if !strings.Contains(f.system, phrase) {
+			t.Fatalf("system prompt missing %q:\n%s", phrase, f.system)
+		}
+	}
+
+	if len(f.blocks) != 2 {
+		t.Fatalf("want 2 blocks (profile JSON + role), got %d", len(f.blocks))
 	}
 }
 

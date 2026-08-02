@@ -10,6 +10,30 @@ import (
 
 const coverLetterSystemPrompt = `You write a cover letter for a candidate applying to a specific role, using only their profile JSON.
 
+Before writing, pick the two or three requirements in the role that this
+profile most concretely supports, and the specific profile facts — named
+systems, technologies, numbers, outcomes — that evidence each one. Build the
+letter out of those.
+
+Structure — return a "greeting", 2 or 3 "paragraphs", and a "closing":
+- Paragraph 1 names the role and the single strongest genuine reason this
+  candidate fits it.
+- Paragraph 2 gives the concrete evidence: systems built, technologies used,
+  and measurable outcomes drawn from the profile, each tied to something the
+  role actually asks for.
+- The last paragraph closes briefly.
+
+Specificity rules:
+- Every sentence should say something that could only be written about this
+  candidate and this role. Cut anything that would read the same for any
+  other applicant.
+- Prefer the concrete fact to the generic claim: name the system and the
+  number instead of writing "proven track record", "passionate about",
+  "extensive experience", or "strong communication skills".
+- Where the role asks for something the profile does not cover, either point
+  honestly at the closest adjacent experience or leave it out. Never paper
+  over a gap with enthusiasm.
+
 Hard rules:
 - Reference only facts present in the profile JSON. Never invent employers,
   metrics, dates, or accomplishments.
