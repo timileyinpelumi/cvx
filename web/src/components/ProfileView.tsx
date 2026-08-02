@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, FileUp } from "lucide-react";
+import { useRef, useState } from "react";
+import { FileUp } from "lucide-react";
 
 import { ProfileUpdate } from "./ProfileUpdate";
-import { Uploader, type ProfileSummary } from "./Uploader";
+import type { ProfileSummary } from "./Uploader";
 
 export type Me = {
   id: number;
@@ -26,8 +26,49 @@ export function ProfileView({
   onProfile,
   onSignedOut,
 }: ProfileViewProps) {
-  const [replacing, setReplacing] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [replaceStatus, setReplaceStatus] = useState<
+    "idle" | "uploading" | "error"
+  >("idle");
+  const [replaceDetail, setReplaceDetail] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const replacing = replaceStatus === "uploading";
+
+  async function replaceUpload(file: File) {
+    setReplaceStatus("uploading");
+    setReplaceDetail(null);
+    const body = new FormData();
+    body.append("file", file);
+    try {
+      const res = await fetch("/api/profile", { method: "POST", body });
+      if (!res.ok) {
+        let detail = "";
+        try {
+          const errBody = (await res.json()) as { error?: string };
+          detail = errBody.error ?? "";
+        } catch {
+          // non-JSON error body; no detail to show
+        }
+        setReplaceDetail(detail || null);
+        setReplaceStatus("error");
+        return;
+      }
+      const next = (await res.json()) as ProfileSummary;
+      setReplaceStatus("idle");
+      onProfile(next);
+    } catch {
+      setReplaceDetail("server unreachable");
+      setReplaceStatus("error");
+    }
+  }
+
+  function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    // Reset so picking the same file twice still fires a change event.
+    event.target.value = "";
+    if (file) void replaceUpload(file);
+  }
 
   async function signOut() {
     setBusy(true);
@@ -52,35 +93,47 @@ export function ProfileView({
         <span className="profile-count">{profile.skillCount}</span> skills
       </p>
 
-      <div className="profile-actions">
-        <ProfileUpdate onUpdated={onProfile} />
+      <ProfileUpdate onUpdated={onProfile} />
 
-        <div className="profile-replace">
-          <button
-            type="button"
-            className="profile-toggle"
-            aria-expanded={replacing}
-            onClick={() => setReplacing((open) => !open)}
-          >
-            <FileUp size={16} aria-hidden />
-            Replace resume
-            <ChevronDown
-              size={16}
-              aria-hidden
-              className={replacing ? "toggle-chevron is-open" : "toggle-chevron"}
-            />
-          </button>
+      <div className="profile-replace">
+        <input
+          ref={fileRef}
+          id="replace-file"
+          className="file-input"
+          type="file"
+          accept="application/pdf"
+          disabled={replacing}
+          onChange={handleFile}
+        />
+        <label
+          className={
+            replacing
+              ? "btn btn--secondary is-disabled"
+              : "btn btn--secondary"
+          }
+          htmlFor="replace-file"
+          aria-busy={replacing || undefined}
+        >
+          <FileUp size={16} aria-hidden="true" />
+          Replace resume
+        </label>
 
+        <div className="notice-slot" role="status">
           {replacing ? (
-            <div className="profile-replace-panel">
-              <Uploader
-                replace
-                onUploaded={(next) => {
-                  onProfile(next);
-                  setReplacing(false);
-                }}
-              />
-            </div>
+            <p className="notice">
+              Reading your resume. This takes about half a minute.
+            </p>
+          ) : null}
+          {replaceStatus === "error" ? (
+            <>
+              <p className="notice notice--error">
+                We couldn&apos;t read that file. Check that it&apos;s a PDF and
+                try again.
+              </p>
+              {replaceDetail ? (
+                <p className="error-detail">{replaceDetail}</p>
+              ) : null}
+            </>
           ) : null}
         </div>
       </div>

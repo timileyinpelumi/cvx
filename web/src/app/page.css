@@ -415,12 +415,14 @@
   font-variant-numeric: tabular-nums;
 }
 
-.profile-replace-panel {
-  padding-bottom: 16px;
+.profile-replace {
+  margin-top: 8px;
 }
 
 .profile-account {
   margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--edge);
 }
 
 .account-heading {
@@ -450,52 +452,16 @@
 
 /* ----------------------------------------------------------- profile update -- */
 
-/* The two disclosures read as one flat list of profile actions: full-width
-   rows with hairline dividers, an icon naming the action, and a chevron
-   carrying the open state. */
-.profile-actions {
-  margin-top: 8px;
-  border-bottom: 1px solid var(--edge);
-}
-
-.profile-toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 48px;
-  padding: 0;
-  background: none;
-  border: 0;
-  border-top: 1px solid var(--edge);
-  font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ink);
-  text-align: left;
-  cursor: pointer;
-  transition: color 120ms ease;
-}
-
-.profile-toggle:hover {
-  color: var(--chalk);
-}
-
-.toggle-chevron {
-  margin-left: auto;
-  color: var(--muted);
-  transition: transform 120ms ease;
-}
-
-.toggle-chevron.is-open {
-  transform: rotate(180deg);
+/* Both profile actions sit in the open — no disclosures. The note field is
+   ready to type into and replace is one press of a quiet button. */
+.profile-update {
+  margin-top: 16px;
 }
 
 .profile-update-row {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-bottom: 16px;
 }
 
 .profile-update-field {

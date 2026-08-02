@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import type { ProfileSummary } from "./Uploader";
 
@@ -10,8 +9,6 @@ type ProfileUpdateProps = {
 };
 
 export function ProfileUpdate({ onUpdated }: ProfileUpdateProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -23,20 +20,10 @@ export function ProfileUpdate({ onUpdated }: ProfileUpdateProps) {
   const success = successTick > 0;
 
   useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
-
-  useEffect(() => {
     if (successTick === 0) return;
     const timer = setTimeout(() => setSuccessTick(0), 4000);
     return () => clearTimeout(timer);
   }, [successTick]);
-
-  function toggle() {
-    setOpen((wasOpen) => !wasOpen);
-    setFailed(false);
-    setErrorDetail(null);
-  }
 
   async function submit() {
     if (note.trim() === "") return;
@@ -64,7 +51,6 @@ export function ProfileUpdate({ onUpdated }: ProfileUpdateProps) {
       const profile = (await res.json()) as ProfileSummary;
       onUpdated(profile);
       setNote("");
-      setOpen(false);
       setSuccessTick((t) => t + 1);
     } catch {
       setErrorDetail("server unreachable");
@@ -76,46 +62,29 @@ export function ProfileUpdate({ onUpdated }: ProfileUpdateProps) {
 
   return (
     <div className="profile-update">
-      <button
-        type="button"
-        className="profile-toggle"
-        aria-expanded={open}
-        onClick={toggle}
-      >
-        <Plus size={16} aria-hidden />
-        Add to profile
-        <ChevronDown
-          size={16}
-          aria-hidden
-          className={open ? "toggle-chevron is-open" : "toggle-chevron"}
+      <div className="profile-update-row">
+        <input
+          type="text"
+          className="profile-update-field"
+          placeholder="Tell cvx what you shipped, learned, or earned"
+          aria-label="Add to profile"
+          value={note}
+          disabled={busy}
+          onChange={(event) => setNote(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void submit();
+          }}
         />
-      </button>
-
-      {open ? (
-        <div className="profile-update-row">
-          <input
-            ref={inputRef}
-            type="text"
-            className="profile-update-field"
-            placeholder="Tell cvx what you shipped, learned, or earned"
-            value={note}
-            disabled={busy}
-            onChange={(event) => setNote(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void submit();
-            }}
-          />
-          <button
-            type="button"
-            className="btn btn--primary"
-            disabled={busy || note.trim() === ""}
-            aria-busy={busy || undefined}
-            onClick={() => void submit()}
-          >
-            Add to profile
-          </button>
-        </div>
-      ) : null}
+        <button
+          type="button"
+          className="btn btn--primary"
+          disabled={busy || note.trim() === ""}
+          aria-busy={busy || undefined}
+          onClick={() => void submit()}
+        >
+          Add to profile
+        </button>
+      </div>
 
       <div className="notice-slot" role="status">
         {success ? (
