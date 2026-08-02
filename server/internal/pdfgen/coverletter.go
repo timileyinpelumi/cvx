@@ -23,35 +23,42 @@ func coverLineHeight(sizePt float64) float64 {
 	return sizePt * ptToMM * coverLineHeightFactor
 }
 
-// RenderCoverLetter typesets a cover letter into a PDF using the same fonts
-// and margins as Render (the resume), so the two documents read as a pair.
-// role is accepted for signature symmetry with the AI generation call but is
-// not itself rendered — cl already carries all the letter's prose.
-func RenderCoverLetter(p model.Profile, role string, cl model.CoverLetter) ([]byte, error) {
-	pdf := fpdf.New("P", "mm", "A4", "")
-	pdf.SetMargins(marginSide, marginTop, marginSide)
-	pdf.SetAutoPageBreak(true, marginBottom)
+// RenderCoverLetter typesets a cover letter into a PDF using the same theme
+// (fonts, accent, margins) as Render (the resume), so the two documents read
+// as a pair. role is accepted for signature symmetry with the AI generation
+// call but is not itself rendered — cl already carries all the letter's
+// prose. Body copy stays at coverBodySize in every theme for readability.
+func RenderCoverLetter(p model.Profile, role string, cl model.CoverLetter, style Style) ([]byte, error) {
+	cfg := resolveTheme(style)
 
-	pdf.AddUTF8FontFromBytes(fontFamily, "", regularFont)
-	pdf.AddUTF8FontFromBytes(fontFamily, "B", semiboldFont)
+	pdf := fpdf.New("P", "mm", "A4", "")
+	pdf.SetMargins(cfg.marginSide, cfg.marginTop, cfg.marginSide)
+	pdf.SetAutoPageBreak(true, cfg.marginBottom)
+
+	registerFonts(pdf)
 
 	pdf.AddPage()
 
 	w := usableWidth(pdf)
 
+	if cfg.nameInAccent {
+		pdf.SetTextColor(cfg.accentR, cfg.accentG, cfg.accentB)
+	} else {
+		pdf.SetTextColor(0, 0, 0)
+	}
+	pdf.SetFont(cfg.displayFamily, "B", cfg.namePt)
+	pdf.CellFormat(w, lineHeight(cfg.namePt, cfg.leading), p.Name, "", 1, "L", false, 0, "")
 	pdf.SetTextColor(0, 0, 0)
-	pdf.SetFont(fontFamily, "B", nameSize)
-	pdf.CellFormat(w, lineHeight(nameSize), p.Name, "", 1, "L", false, 0, "")
 
 	contact := contactLine(p)
 	if contact != "" {
-		pdf.SetFont(fontFamily, "", contactSize)
-		pdf.CellFormat(w, lineHeight(contactSize), contact, "", 1, "L", false, 0, "")
+		pdf.SetFont(cfg.bodyFamily, "", cfg.contactPt)
+		pdf.CellFormat(w, lineHeight(cfg.contactPt, cfg.leading), contact, "", 1, "L", false, 0, "")
 	}
 
 	pdf.Ln(coverHeaderGap)
 
-	pdf.SetFont(fontFamily, "", coverBodySize)
+	pdf.SetFont(cfg.bodyFamily, "", coverBodySize)
 	if cl.Greeting != "" {
 		pdf.MultiCell(w, coverLineHeight(coverBodySize), cl.Greeting, "", "L", false)
 		pdf.Ln(coverParagraphGap)
@@ -70,7 +77,7 @@ func RenderCoverLetter(p model.Profile, role string, cl model.CoverLetter) ([]by
 		pdf.Ln(coverClosingGap)
 	}
 
-	pdf.SetFont(fontFamily, "B", coverBodySize)
+	pdf.SetFont(cfg.bodyFamily, "B", coverBodySize)
 	pdf.MultiCell(w, coverLineHeight(coverBodySize), p.Name, "", "L", false)
 
 	if err := pdf.Error(); err != nil {

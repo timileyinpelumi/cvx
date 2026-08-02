@@ -64,7 +64,7 @@ func fixture() (model.Profile, model.Tailored) {
 
 func TestRender(t *testing.T) {
 	p, ta := fixture()
-	b, err := Render(p, ta)
+	b, err := Render(p, ta, DefaultStyle())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestRender(t *testing.T) {
 func TestRenderEmptySections(t *testing.T) {
 	p, ta := fixture()
 	ta.Sections = nil
-	b, err := Render(p, ta)
+	b, err := Render(p, ta, DefaultStyle())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestRenderLongTitleWraps(t *testing.T) {
 	ta.Sections[0].Items[0].Title = longTitle
 	ta.Sections[0].Items[0].Organization = longOrg
 
-	b, err := Render(p, ta)
+	b, err := Render(p, ta, DefaultStyle())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestRenderLongTitleWraps(t *testing.T) {
 // confirming the long combo is actually over budget and the short one isn't.
 func TestTitleNeedsWrap(t *testing.T) {
 	pdf := newTestPDF()
-	pdf.SetFont(fontFamily, "B", itemSize)
+	pdf.SetFont(fontFamily, "B", resolveTheme(DefaultStyle()).itemPt)
 
 	const titleWidth = 151.64 // usableWidth minus a "2021 – Present" date column, per production math
 
@@ -143,9 +143,10 @@ func TestRenderItemWrapsLongTitle(t *testing.T) {
 	shortItem := model.TItem{Title: "Engineer", Organization: "Analytical Engines Co", Dates: "2021 – Present"}
 	longItem := model.TItem{Title: longTitle, Organization: longOrg, Dates: "2021 – Present"}
 
+	cfg := resolveTheme(DefaultStyle())
 	shortPDF := newTestPDF()
 	y0 := shortPDF.GetY()
-	renderItem(shortPDF, shortItem)
+	renderItem(shortPDF, cfg, shortItem)
 	if err := shortPDF.Error(); err != nil {
 		t.Fatal(err)
 	}
@@ -153,13 +154,13 @@ func TestRenderItemWrapsLongTitle(t *testing.T) {
 
 	longPDF := newTestPDF()
 	y1 := longPDF.GetY()
-	renderItem(longPDF, longItem)
+	renderItem(longPDF, cfg, longItem)
 	if err := longPDF.Error(); err != nil {
 		t.Fatal(err)
 	}
 	longDelta := longPDF.GetY() - y1
 
-	singleLine := lineHeight(itemSize)
+	singleLine := lineHeight(cfg.itemPt, cfg.leading)
 
 	if longDelta <= shortDelta {
 		t.Fatalf("expected long-title item to consume more vertical space than short-title item: long=%.2fmm short=%.2fmm", longDelta, shortDelta)
@@ -177,7 +178,7 @@ func TestRenderSelectedSkills(t *testing.T) {
 	p, ta := fixture()
 	ta.SelectedSkills = []string{"Python", "Distributed Systems", "PostgreSQL"}
 
-	withSkills, err := Render(p, ta)
+	withSkills, err := Render(p, ta, DefaultStyle())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +187,7 @@ func TestRenderSelectedSkills(t *testing.T) {
 	}
 
 	ta.SelectedSkills = nil
-	withoutSkills, err := Render(p, ta)
+	withoutSkills, err := Render(p, ta, DefaultStyle())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,9 +207,10 @@ func TestRenderSelectedSkills(t *testing.T) {
 // on a fresh page, for tests that exercise unexported render functions
 // directly instead of going through Render.
 func newTestPDF() *fpdf.Fpdf {
+	cfg := resolveTheme(DefaultStyle())
 	pdf := fpdf.New("P", "mm", "A4", "")
-	pdf.SetMargins(marginSide, marginTop, marginSide)
-	pdf.SetAutoPageBreak(true, marginBottom)
+	pdf.SetMargins(cfg.marginSide, cfg.marginTop, cfg.marginSide)
+	pdf.SetAutoPageBreak(true, cfg.marginBottom)
 	pdf.AddUTF8FontFromBytes(fontFamily, "", regularFont)
 	pdf.AddUTF8FontFromBytes(fontFamily, "B", semiboldFont)
 	pdf.AddPage()

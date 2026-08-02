@@ -234,7 +234,7 @@ func (s *Server) postGenerate(c echo.Context) error {
 		return errJSON(c, http.StatusBadGateway, err.Error())
 	}
 
-	pdf, err := pdfgen.Render(*p, tailored)
+	pdf, err := pdfgen.Render(*p, tailored, pdfgen.DefaultStyle())
 	if err != nil {
 		slog.Error("render failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
@@ -250,7 +250,7 @@ func (s *Server) postGenerate(c echo.Context) error {
 	if req.CoverLetter {
 		if cl, err := ai.CoverLetter(ctx, s.LLM, *p, req.RoleInput); err != nil {
 			slog.Error("cover letter failed", "err", err)
-		} else if rendered, err := pdfgen.RenderCoverLetter(*p, tailored.TargetRole, cl); err != nil {
+		} else if rendered, err := pdfgen.RenderCoverLetter(*p, tailored.TargetRole, cl, pdfgen.DefaultStyle()); err != nil {
 			slog.Error("cover letter failed", "err", err)
 		} else {
 			coverPDF = rendered

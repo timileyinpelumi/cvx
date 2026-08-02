@@ -22,7 +22,7 @@ func TestRenderCoverLetter(t *testing.T) {
 	p, _ := fixture()
 	cl := coverLetterFixture()
 
-	b, err := RenderCoverLetter(p, "Python Backend Engineer", cl)
+	b, err := RenderCoverLetter(p, "Python Backend Engineer", cl, DefaultStyle())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestRenderCoverLetterEmptyParagraphs(t *testing.T) {
 	cl := coverLetterFixture()
 	cl.Paragraphs = nil
 
-	b, err := RenderCoverLetter(p, "Python Backend Engineer", cl)
+	b, err := RenderCoverLetter(p, "Python Backend Engineer", cl, DefaultStyle())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,19 +55,33 @@ func TestRenderCoverLetterWithParagraphsIsLarger(t *testing.T) {
 	p, _ := fixture()
 
 	withParas := coverLetterFixture()
-	withBytes, err := RenderCoverLetter(p, "Python Backend Engineer", withParas)
+	withBytes, err := RenderCoverLetter(p, "Python Backend Engineer", withParas, DefaultStyle())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	withoutParas := coverLetterFixture()
 	withoutParas.Paragraphs = nil
-	withoutBytes, err := RenderCoverLetter(p, "Python Backend Engineer", withoutParas)
+	withoutBytes, err := RenderCoverLetter(p, "Python Backend Engineer", withoutParas, DefaultStyle())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if len(withBytes) <= len(withoutBytes) {
 		t.Fatalf("expected pdf with paragraphs to be larger: with=%d without=%d", len(withBytes), len(withoutBytes))
+	}
+}
+
+func TestRenderCoverLetterAllThemes(t *testing.T) {
+	p, _ := fixture()
+	cl := coverLetterFixture()
+	for _, th := range []string{"classic", "modern", "compact"} {
+		b, err := RenderCoverLetter(p, "Python Backend Engineer", cl, Style{Theme: th, Accent: "#0F766E", Density: "normal"})
+		if err != nil {
+			t.Fatalf("%s: %v", th, err)
+		}
+		if len(b) < 1000 || string(b[:5]) != "%PDF-" {
+			t.Fatalf("%s: implausible pdf (%d bytes)", th, len(b))
+		}
 	}
 }
