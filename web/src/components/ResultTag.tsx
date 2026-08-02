@@ -19,6 +19,7 @@ export type GenerateResult = {
   whatChanged: string[];
   emailed: boolean;
   coverLetter: boolean;
+  recruiterEmail: boolean;
 };
 
 type ResultTagProps = {
@@ -74,7 +75,11 @@ export function ResultTag({
             </div>
 
             {result.emailed ? (
-              <p className="result-note">Sent to your inbox too.</p>
+              <p className="result-note">
+                {result.recruiterEmail
+                  ? "A recruiter-ready email is in your inbox."
+                  : "Sent to your inbox too."}
+              </p>
             ) : null}
 
             {result.whatChanged.length > 0 ? (

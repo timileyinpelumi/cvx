@@ -17,11 +17,13 @@ export function Generator({ result, onResult, onProfileChanged }: GeneratorProps
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const [roleInput, setRoleInput] = useState("");
   const [coverLetter, setCoverLetter] = useState(false);
+  const [recruiterEmail, setRecruiterEmail] = useState(false);
   // Captured at generate time so "Generate again" reruns exactly what
   // produced the result, even if the textarea has been edited since.
   const [submitted, setSubmitted] = useState<{
     role: string;
     cover: boolean;
+    recruiter: boolean;
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -49,8 +51,8 @@ export function Generator({ result, onResult, onProfileChanged }: GeneratorProps
     return () => window.removeEventListener("resize", autoGrow);
   }, [autoGrow]);
 
-  async function generate(role: string, cover: boolean) {
-    setSubmitted({ role, cover });
+  async function generate(role: string, cover: boolean, recruiter: boolean) {
+    setSubmitted({ role, cover, recruiter });
     setBusy(true);
     setFailed(false);
     setErrorDetail(null);
@@ -58,7 +60,11 @@ export function Generator({ result, onResult, onProfileChanged }: GeneratorProps
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roleInput: role, coverLetter: cover }),
+        body: JSON.stringify({
+          roleInput: role,
+          coverLetter: cover,
+          recruiterEmail: recruiter,
+        }),
       });
       if (!res.ok) {
         let detail = "";
@@ -104,13 +110,24 @@ export function Generator({ result, onResult, onProfileChanged }: GeneratorProps
         <span className="option-label">Also write a cover letter</span>
       </label>
 
+      <label className="option-row">
+        <input
+          type="checkbox"
+          className="option-box"
+          checked={recruiterEmail}
+          disabled={busy}
+          onChange={(event) => setRecruiterEmail(event.target.checked)}
+        />
+        <span className="option-label">Recruiter-ready email</span>
+      </label>
+
       <div className="composer-actions">
         <button
           type="button"
           className="btn btn--primary btn--block"
           disabled={busy || roleInput.trim() === ""}
           aria-busy={busy || undefined}
-          onClick={() => void generate(roleInput, coverLetter)}
+          onClick={() => void generate(roleInput, coverLetter, recruiterEmail)}
         >
           {busy ? null : <Scissors size={16} aria-hidden="true" />}
           {busy ? "Tailoring" : "Tailor resume"}
@@ -136,7 +153,12 @@ export function Generator({ result, onResult, onProfileChanged }: GeneratorProps
           onProfileChanged={onProfileChanged}
           onRegenerate={
             submitted
-              ? () => void generate(submitted.role, submitted.cover)
+              ? () =>
+                  void generate(
+                    submitted.role,
+                    submitted.cover,
+                    submitted.recruiter,
+                  )
               : undefined
           }
         />
