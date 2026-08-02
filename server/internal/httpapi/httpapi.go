@@ -5,6 +5,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -59,6 +60,9 @@ func (s *Server) Register(e *echo.Echo) {
 	api.POST("/generate", s.postGenerate)
 	api.GET("/generations", s.listGenerations)
 	api.GET("/gaps", s.getGaps)
+	api.GET("/settings", s.getSettings)
+	api.PUT("/settings", s.putSettings)
+	api.GET("/settings/preview", s.getSettingsPreview)
 	api.DELETE("/generations/:id", s.deleteGeneration)
 	api.GET("/generations/:id/pdf", s.getGenerationPDF)
 	api.GET("/generations/:id/cover", s.getGenerationCoverPDF)
@@ -234,7 +238,8 @@ func (s *Server) postGenerate(c echo.Context) error {
 		return errJSON(c, http.StatusBadGateway, err.Error())
 	}
 
-	pdf, err := pdfgen.Render(*p, tailored, pdfgen.DefaultStyle())
+	style := s.loadStyle(userID)
+	pdf, err := pdfgen.Render(*p, tailored, style)
 	if err != nil {
 		slog.Error("render failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
@@ -250,7 +255,7 @@ func (s *Server) postGenerate(c echo.Context) error {
 	if req.CoverLetter {
 		if cl, err := ai.CoverLetter(ctx, s.LLM, *p, req.RoleInput); err != nil {
 			slog.Error("cover letter failed", "err", err)
-		} else if rendered, err := pdfgen.RenderCoverLetter(*p, tailored.TargetRole, cl, pdfgen.DefaultStyle()); err != nil {
+		} else if rendered, err := pdfgen.RenderCoverLetter(*p, tailored.TargetRole, cl, style); err != nil {
 			slog.Error("cover letter failed", "err", err)
 		} else {
 			coverPDF = rendered
@@ -321,6 +326,114 @@ func (s *Server) getGaps(c echo.Context) error {
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusOK, gapsResponse{Total: total, Trends: model.NonNil(trends)})
+}
+
+type settingsResponse struct {
+	ResumeStyle pdfgen.Style `json:"resumeStyle"`
+}
+
+// loadStyle resolves the user's saved style, falling back to defaults on
+// absence or bad data — read paths never fail over settings.
+func (s *Server) loadStyle(userID int64) pdfgen.Style {
+	raw, err := s.Store.GetResumeStyle(userID)
+	if err != nil || raw == nil {
+		return pdfgen.DefaultStyle()
+	}
+	var st pdfgen.Style
+	if json.Unmarshal(raw, &st) != nil {
+		return pdfgen.DefaultStyle()
+	}
+	return st.Normalized()
+}
+
+func (s *Server) getSettings(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	return c.JSON(http.StatusOK, settingsResponse{ResumeStyle: s.loadStyle(userID)})
+}
+
+func (s *Server) putSettings(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	var req settingsResponse
+	if err := c.Bind(&req); err != nil {
+		return errJSON(c, http.StatusBadRequest, "invalid body")
+	}
+	if err := req.ResumeStyle.Validate(); err != nil {
+		return errJSON(c, http.StatusBadRequest, err.Error())
+	}
+	raw, err := json.Marshal(req.ResumeStyle)
+	if err != nil {
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if err := s.Store.SaveResumeStyle(userID, raw); err != nil {
+		slog.Error("save settings failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(http.StatusOK, settingsResponse{ResumeStyle: req.ResumeStyle})
+}
+
+// sampleTailored builds a no-LLM stand-in from the profile itself so the
+// preview shows real content in the chosen style without a generation.
+func sampleTailored(p model.Profile) model.Tailored {
+	items := p.Items
+	if len(items) > 4 {
+		items = items[:4]
+	}
+	var tItems []model.TItem
+	for _, it := range items {
+		bullets := it.Bullets
+		if len(bullets) > 3 {
+			bullets = bullets[:3]
+		}
+		var tb []model.TBullet
+		for _, b := range bullets {
+			tb = append(tb, model.TBullet{SourceBulletID: b.ID, Text: b.Text})
+		}
+		dates := it.StartDate
+		if it.EndDate != "" {
+			if dates != "" {
+				dates += " – " + it.EndDate
+			} else {
+				dates = it.EndDate
+			}
+		}
+		tItems = append(tItems, model.TItem{
+			SourceID: it.ID, Title: it.Title, Organization: it.Organization,
+			Dates: dates, Bullets: tb,
+		})
+	}
+	return model.Tailored{
+		TargetRole:     "Sample resume",
+		Headline:       "Sample resume",
+		SelectedSkills: p.Skills,
+		Sections:       []model.TSection{{Title: "Experience", Items: tItems}},
+	}
+}
+
+func (s *Server) getSettingsPreview(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	p, err := s.Store.LoadProfile(userID)
+	if err != nil {
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if p == nil {
+		return errJSON(c, http.StatusNotFound, "no profile yet")
+	}
+	pdf, err := pdfgen.Render(*p, sampleTailored(*p), s.loadStyle(userID))
+	if err != nil {
+		slog.Error("settings preview render failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	c.Response().Header().Set(echo.HeaderContentDisposition, `inline; filename="cvx-preview.pdf"`)
+	return c.Blob(http.StatusOK, "application/pdf", pdf)
 }
 
 func (s *Server) deleteGeneration(c echo.Context) error {

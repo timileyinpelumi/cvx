@@ -17,6 +17,7 @@ import (
 	"cvx/internal/ai"
 	"cvx/internal/auth"
 	"cvx/internal/model"
+	"cvx/internal/pdfgen"
 	"cvx/internal/store"
 )
 
@@ -1019,5 +1020,77 @@ func TestDeleteGenerationRoute(t *testing.T) {
 	e.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/generations/"+got.ID, nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("second delete: want 404, got %d", rec.Code)
+	}
+}
+
+func TestSettingsRoutes(t *testing.T) {
+	_, e := newTestServer(t)
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/settings", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get defaults: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		ResumeStyle pdfgen.Style `json:"resumeStyle"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ResumeStyle != pdfgen.DefaultStyle() {
+		t.Fatalf("want defaults, got %+v", got.ResumeStyle)
+	}
+
+	put := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := put(`{"resumeStyle":{"theme":"neon","accent":"#2244D9","density":"normal","skillsFirst":false}}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad theme: want 400, got %d: %s", rec.Code, rec.Body)
+	}
+
+	if rec := put(`{"resumeStyle":{"theme":"compact","accent":"#B07818","density":"tight","skillsFirst":true}}`); rec.Code != http.StatusOK {
+		t.Fatalf("valid put: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/settings", nil))
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := pdfgen.Style{Theme: "compact", Accent: "#B07818", Density: "tight", SkillsFirst: true}
+	if got.ResumeStyle != want {
+		t.Fatalf("round trip: want %+v, got %+v", want, got.ResumeStyle)
+	}
+}
+
+func TestSettingsPreview(t *testing.T) {
+	_, e := newTestServer(t)
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/settings/preview", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("preview without profile: want 404, got %d", rec.Code)
+	}
+
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/settings/preview", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("preview: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	if ct := rec.Header().Get(echo.HeaderContentType); ct != "application/pdf" {
+		t.Fatalf("want application/pdf, got %q", ct)
+	}
+	if cd := rec.Header().Get(echo.HeaderContentDisposition); !strings.Contains(cd, "inline") {
+		t.Fatalf("want inline disposition, got %q", cd)
+	}
+	if rec.Body.Len() < 1000 {
+		t.Fatalf("implausible preview pdf: %d bytes", rec.Body.Len())
 	}
 }

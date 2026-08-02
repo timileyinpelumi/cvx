@@ -25,6 +25,10 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL, name TEXT NOT NULL, created_at TEXT NOT NULL,
   UNIQUE(provider, provider_id)
 );
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id INTEGER PRIMARY KEY,
+  resume_style TEXT NOT NULL
+);
 `
 
 type Store struct{ db *sql.DB }
@@ -292,6 +296,29 @@ func (s *Store) ListGenerations(userID int64) ([]GenerationMeta, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// GetResumeStyle returns the user's saved resume style JSON, or (nil, nil)
+// when they have never saved one.
+func (s *Store) GetResumeStyle(userID int64) ([]byte, error) {
+	var raw string
+	err := s.db.QueryRow(`SELECT resume_style FROM user_settings WHERE user_id = ?`, userID).Scan(&raw)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return []byte(raw), nil
+}
+
+func (s *Store) SaveResumeStyle(userID int64, style []byte) error {
+	_, err := s.db.Exec(
+		`INSERT INTO user_settings (user_id, resume_style) VALUES (?, ?)
+		 ON CONFLICT(user_id) DO UPDATE SET resume_style = excluded.resume_style`,
+		userID, string(style),
+	)
+	return err
 }
 
 // DeleteGeneration removes one generation owned by userID, reporting

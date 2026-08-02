@@ -714,3 +714,26 @@ func TestDeleteGenerationScopedPerUser(t *testing.T) {
 		t.Fatalf("want empty list after delete, got %d rows", len(list))
 	}
 }
+
+func TestResumeStyleRoundTripPerUser(t *testing.T) {
+	s := open(t)
+	userA := testUser(t, s, "google", "a-1")
+	userB := testUser(t, s, "google", "b-1")
+
+	if raw, err := s.GetResumeStyle(userA); err != nil || raw != nil {
+		t.Fatalf("unset: want nil,nil got %q,%v", raw, err)
+	}
+	if err := s.SaveResumeStyle(userA, []byte(`{"theme":"classic"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveResumeStyle(userA, []byte(`{"theme":"compact"}`)); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := s.GetResumeStyle(userA)
+	if err != nil || string(raw) != `{"theme":"compact"}` {
+		t.Fatalf("got %q,%v", raw, err)
+	}
+	if raw, err := s.GetResumeStyle(userB); err != nil || raw != nil {
+		t.Fatalf("userB must be unset: got %q,%v", raw, err)
+	}
+}
