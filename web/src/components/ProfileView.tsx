@@ -93,9 +93,17 @@ export function ProfileView({
         <span className="profile-count">{profile.skillCount}</span> skills
       </p>
 
-      <ProfileUpdate onUpdated={onProfile} />
+      <div className="profile-section">
+        <h3 className="profile-section-title">Add to profile</h3>
+        <ProfileUpdate onUpdated={onProfile} />
+      </div>
 
-      <div className="profile-replace">
+      <div className="profile-section profile-replace">
+        <h3 className="profile-section-title">Resume</h3>
+        <p className="profile-section-hint">
+          Upload a new PDF. cvx reads it in and replaces the profile it holds
+          now.
+        </p>
         <input
           ref={fileRef}
           id="replace-file"
@@ -138,8 +146,8 @@ export function ProfileView({
         </div>
       </div>
 
-      <div className="profile-account">
-        <h3 className="account-heading">Account</h3>
+      <div className="profile-section profile-account">
+        <h3 className="profile-section-title">Account</h3>
         <p className="account-line">
           {me.email}
           <span className="profile-sep">·</span>

@@ -82,7 +82,7 @@ export function ProfileUpdate({ onUpdated }: ProfileUpdateProps) {
           aria-busy={busy || undefined}
           onClick={() => void submit()}
         >
-          Add to profile
+          Add
         </button>
       </div>
 

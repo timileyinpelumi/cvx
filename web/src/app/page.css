@@ -415,21 +415,26 @@
   font-variant-numeric: tabular-nums;
 }
 
-.profile-replace {
-  margin-top: 8px;
-}
-
-.profile-account {
-  margin-top: 32px;
-  padding-top: 24px;
+/* Each profile concern is its own labeled section behind a hairline, so
+   adding, replacing, and the account never read as one control cluster. */
+.profile-section {
+  margin-top: 24px;
+  padding-top: 20px;
   border-top: 1px solid var(--edge);
 }
 
-.account-heading {
-  margin-bottom: 8px;
+.profile-section-title {
+  margin-bottom: 12px;
   font-family: var(--font-body);
   font-size: 13px;
   font-weight: 600;
+  color: var(--muted);
+}
+
+.profile-section-hint {
+  max-width: 46ch;
+  margin-bottom: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 
@@ -444,19 +449,8 @@
   margin-top: 16px;
 }
 
-@media (min-width: 768px) {
-  .profile-account {
-    margin-top: 40px;
-  }
-}
 
 /* ----------------------------------------------------------- profile update -- */
-
-/* Both profile actions sit in the open — no disclosures. The note field is
-   ready to type into and replace is one press of a quiet button. */
-.profile-update {
-  margin-top: 16px;
-}
 
 .profile-update-row {
   display: flex;
