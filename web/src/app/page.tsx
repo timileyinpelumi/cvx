@@ -152,7 +152,11 @@ export default function Home() {
         {onboarding ? <Uploader onUploaded={setProfile} /> : null}
 
         {navigating && view === "tailor" ? (
-          <Generator result={result} onResult={handleResult} />
+          <Generator
+            result={result}
+            onResult={handleResult}
+            onProfileChanged={() => void loadProfile()}
+          />
         ) : null}
 
         {navigating && view === "history" ? (

@@ -775,6 +775,74 @@
   overflow-wrap: break-word;
 }
 
+/* ------------------------------------------------------------ gap fill -- */
+
+.gap-fill {
+  margin-top: 4px;
+}
+
+.gap-fill-toggle {
+  min-height: 32px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--chalk);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.gap-fill-toggle:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.gap-fill-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.gap-fill-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 12px;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-control);
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.gap-fill-field::placeholder {
+  color: var(--muted);
+}
+
+.gap-fill-done {
+  display: inline-block;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.gap-fill-error {
+  margin-top: 6px;
+}
+
+/* A filled gap stays legible but stops shouting: its severity tag goes
+   muted for the rest of the session. */
+.gap-row--filled .gap-severity {
+  color: var(--muted);
+}
+
+.result-regenerate {
+  margin-top: 16px;
+}
+
 .gap-requirement {
   font-weight: 500;
 }

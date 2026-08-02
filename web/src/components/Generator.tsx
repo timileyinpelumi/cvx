@@ -10,12 +10,19 @@ const MAX_ROWS = 8;
 type GeneratorProps = {
   result: GenerateResult | null;
   onResult: (result: GenerateResult) => void;
+  onProfileChanged?: () => void;
 };
 
-export function Generator({ result, onResult }: GeneratorProps) {
+export function Generator({ result, onResult, onProfileChanged }: GeneratorProps) {
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const [roleInput, setRoleInput] = useState("");
   const [coverLetter, setCoverLetter] = useState(false);
+  // Captured at generate time so "Generate again" reruns exactly what
+  // produced the result, even if the textarea has been edited since.
+  const [submitted, setSubmitted] = useState<{
+    role: string;
+    cover: boolean;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
@@ -42,7 +49,8 @@ export function Generator({ result, onResult }: GeneratorProps) {
     return () => window.removeEventListener("resize", autoGrow);
   }, [autoGrow]);
 
-  async function generate() {
+  async function generate(role: string, cover: boolean) {
+    setSubmitted({ role, cover });
     setBusy(true);
     setFailed(false);
     setErrorDetail(null);
@@ -50,7 +58,7 @@ export function Generator({ result, onResult }: GeneratorProps) {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roleInput, coverLetter }),
+        body: JSON.stringify({ roleInput: role, coverLetter: cover }),
       });
       if (!res.ok) {
         let detail = "";
@@ -102,7 +110,7 @@ export function Generator({ result, onResult }: GeneratorProps) {
           className="btn btn--primary btn--block"
           disabled={busy || roleInput.trim() === ""}
           aria-busy={busy || undefined}
-          onClick={() => void generate()}
+          onClick={() => void generate(roleInput, coverLetter)}
         >
           {busy ? null : <Scissors size={16} aria-hidden="true" />}
           {busy ? "Tailoring" : "Tailor resume"}
@@ -121,7 +129,18 @@ export function Generator({ result, onResult }: GeneratorProps) {
       </div>
 
       {busy ? <ResultTag pending /> : null}
-      {!busy && result ? <ResultTag result={result} /> : null}
+      {!busy && result ? (
+        <ResultTag
+          key={result.id}
+          result={result}
+          onProfileChanged={onProfileChanged}
+          onRegenerate={
+            submitted
+              ? () => void generate(submitted.role, submitted.cover)
+              : undefined
+          }
+        />
+      ) : null}
     </div>
   );
 }

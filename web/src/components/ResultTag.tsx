@@ -1,7 +1,9 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { useState } from "react";
+import { Download, RotateCcw } from "lucide-react";
 
+import { GapFill } from "./GapFill";
 import { Stitch } from "./Stitch";
 
 export type Gap = {
@@ -22,9 +24,18 @@ export type GenerateResult = {
 type ResultTagProps = {
   result?: GenerateResult;
   pending?: boolean;
+  onProfileChanged?: () => void;
+  onRegenerate?: () => void;
 };
 
-export function ResultTag({ result, pending = false }: ResultTagProps) {
+export function ResultTag({
+  result,
+  pending = false,
+  onProfileChanged,
+  onRegenerate,
+}: ResultTagProps) {
+  const [filled, setFilled] = useState<Set<number>>(new Set());
+
   return (
     <article
       className={pending ? "result-tag result-tag--pending" : "result-tag"}
@@ -84,7 +95,12 @@ export function ResultTag({ result, pending = false }: ResultTagProps) {
                 <h3 className="block-heading">Gaps for this role</h3>
                 <ul className="gap-list">
                   {result.gaps.map((gap, i) => (
-                    <li key={i} className="gap-row">
+                    <li
+                      key={i}
+                      className={
+                        filled.has(i) ? "gap-row gap-row--filled" : "gap-row"
+                      }
+                    >
                       <span
                         className={
                           gap.severity === "missing"
@@ -99,11 +115,31 @@ export function ResultTag({ result, pending = false }: ResultTagProps) {
                           {gap.requirement}
                         </span>{" "}
                         <span className="gap-evidence">{gap.evidence}</span>
+                        <GapFill
+                          context={`${gap.requirement} — ${gap.evidence}`}
+                          onFilled={() => {
+                            setFilled((prev) => new Set(prev).add(i));
+                            onProfileChanged?.();
+                          }}
+                        />
                       </span>
                     </li>
                   ))}
                 </ul>
               </section>
+            ) : null}
+
+            {filled.size > 0 && onRegenerate ? (
+              <div className="result-regenerate">
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--block"
+                  onClick={onRegenerate}
+                >
+                  <RotateCcw size={16} aria-hidden="true" />
+                  Generate again
+                </button>
+              </div>
             ) : null}
           </>
         ) : null}
