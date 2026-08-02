@@ -61,7 +61,7 @@ export function Archive({ rows }: ArchiveProps) {
             ).length;
             const weak = row.gaps.length - missing;
             return (
-              <li key={row.id} className="archive-card">
+              <li key={row.id} className="archive-row">
                 <div className="archive-info">
                   <span className="archive-role">{row.targetRole}</span>
                   <span className="archive-facts">
