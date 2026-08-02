@@ -25,7 +25,16 @@
 /* ------------------------------------------------------------- masthead -- */
 
 .masthead {
-  margin-bottom: 40px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.masthead-brand {
+  display: flex;
+  flex-direction: column;
 }
 
 .masthead-mark {
@@ -39,77 +48,86 @@
 }
 
 .tagline {
-  margin-top: 16px;
+  margin-bottom: 32px;
   color: var(--muted);
   text-wrap: balance;
 }
 
-/* The tab row carries its own space below it, so the masthead gives up some
-   of its own when the nav follows it. */
-.masthead:has(+ .nav) {
-  margin-bottom: 24px;
-}
-
 @media (min-width: 768px) {
   .masthead {
-    margin-bottom: 48px;
-  }
-
-  .masthead:has(+ .nav) {
     margin-bottom: 32px;
   }
 }
 
 /* ------------------------------------------------------------------ nav -- */
 
-.nav {
-  display: flex;
-  gap: 24px;
-  margin-bottom: 32px;
-  /* Four short labels fit at 360px, but the row scrolls rather than pushing
-     the page sideways if the labels or the user's font ever grow. */
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.nav::-webkit-scrollbar {
-  display: none;
-}
-
-.nav-tab {
+.nav-menu {
+  position: relative;
   flex: 0 0 auto;
+}
+
+.nav-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
   min-height: 44px;
   padding: 0;
   background: none;
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-control);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.nav-trigger:hover {
+  color: var(--ink);
+}
+
+.nav-trigger[aria-expanded="true"] {
+  color: var(--chalk);
+}
+
+.nav-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 6px;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-pop);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-control);
   font-family: var(--font-body);
   font-size: 14px;
   font-weight: 500;
-  color: var(--muted);
-  white-space: nowrap;
+  color: var(--ink);
+  text-align: left;
   cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease;
 }
 
-/* Inset so the ring is never clipped by the scrolling row. */
-.nav-tab:focus-visible {
-  outline-offset: -2px;
+.nav-item:hover {
+  background: color-mix(in srgb, var(--chalk) 8%, transparent);
 }
 
-.nav-tab:hover {
-  color: var(--ink);
-}
-
-.nav-tab.is-active {
-  color: var(--ink);
-  border-bottom-color: var(--chalk);
-}
-
-@media (min-width: 768px) {
-  .nav {
-    margin-bottom: 40px;
-  }
+.nav-item.is-current {
+  color: var(--chalk);
+  background: color-mix(in srgb, var(--chalk) 10%, transparent);
 }
 
 /* ---------------------------------------------------------------- views -- */

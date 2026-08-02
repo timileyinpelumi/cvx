@@ -6,7 +6,7 @@ import { Archive, type GenerationMeta } from "@/components/Archive";
 import { GapTracker, type GapTrend } from "@/components/GapTracker";
 import { Generator } from "@/components/Generator";
 import { Logo } from "@/components/Logo";
-import { Nav, PANEL_ID, tabId, type View } from "@/components/Nav";
+import { Nav, type View } from "@/components/Nav";
 import { ProfileView, type Me } from "@/components/ProfileView";
 import { SignIn } from "@/components/SignIn";
 import { Stitch } from "@/components/Stitch";
@@ -121,27 +121,24 @@ export default function Home() {
   return (
     <div className="shell">
       <header className="masthead">
-        <h1 className="masthead-mark">
-          <Logo height={28} />
-        </h1>
-        <Stitch width={60} className="masthead-stitch" />
+        <div className="masthead-brand">
+          <h1 className="masthead-mark">
+            <Logo height={28} />
+          </h1>
+          <Stitch width={60} className="masthead-stitch" />
+        </div>
+        {navigating ? <Nav view={view} onChange={setView} /> : null}
+      </header>
+
+      {!navigating ? (
         <p className="tagline">
           Keep one profile. Get a resume cut to fit any role.
         </p>
-      </header>
-
-      {navigating ? <Nav view={view} onChange={setView} /> : null}
+      ) : null}
 
       <main
         className="stage"
-        {...(navigating
-          ? {
-              id: PANEL_ID,
-              role: "tabpanel",
-              "aria-labelledby": tabId(view),
-              tabIndex: 0,
-            }
-          : {})}
+        {...(navigating ? { tabIndex: 0, "aria-label": "Content" } : {})}
       >
         {loaded && me === null ? <SignIn /> : null}
 
