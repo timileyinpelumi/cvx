@@ -560,6 +560,89 @@ CREATE TABLE generations (
 	}
 }
 
+// assertProfileRow checks the profile table has exactly one row and that
+// its json/updated_at are byte-identical to want, used by
+// TestMigrationPreservesExistingProfileRowThroughCheckRebuild to prove the
+// CHECK(id=1) table-rebuild in migrateProfileDropSingleRowCheck neither
+// drops nor mutates a pre-existing row's content.
+func assertProfileRow(t *testing.T, s *Store, label, wantJSON, wantUpdatedAt string) {
+	t.Helper()
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM profile`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("%s: want 1 profile row, got %d", label, count)
+	}
+	var gotJSON, gotUpdatedAt string
+	if err := s.db.QueryRow(`SELECT json, updated_at FROM profile`).Scan(&gotJSON, &gotUpdatedAt); err != nil {
+		t.Fatal(err)
+	}
+	if gotJSON != wantJSON {
+		t.Fatalf("%s: json changed by migration: want %q, got %q", label, wantJSON, gotJSON)
+	}
+	if gotUpdatedAt != wantUpdatedAt {
+		t.Fatalf("%s: updated_at changed by migration: want %q, got %q", label, wantUpdatedAt, gotUpdatedAt)
+	}
+}
+
+// TestMigrationPreservesExistingProfileRowThroughCheckRebuild builds a
+// legacy v1-schema DB (profile still has CHECK (id = 1), the constraint
+// migrateProfileDropSingleRowCheck exists to remove) with a real profile row
+// already in it, then checks that Open() preserves that row exactly — same
+// row count, same json, same updated_at — both right after the rebuild and
+// again after a second Open() (proving the rebuild itself, not just the
+// column-add migrations, is idempotent).
+func TestMigrationPreservesExistingProfileRowThroughCheckRebuild(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-profile.db")
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(v1Schema); err != nil {
+		t.Fatal(err)
+	}
+	const wantJSON = `{"name":"Legacy Ada","items":[{"id":"item-0","title":"Engineer"}],"skills":["Go","Python"]}`
+	const wantUpdatedAt = "2020-01-01T00:00:00Z"
+	if _, err := db.Exec(
+		`INSERT INTO profile (id, json, updated_at) VALUES (1, ?, ?)`,
+		wantJSON, wantUpdatedAt,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s1, err := Open(path)
+	if err != nil {
+		t.Fatalf("first open (migration/rebuild) failed: %v", err)
+	}
+	assertProfileRow(t, s1, "after first Open (CHECK rebuild)", wantJSON, wantUpdatedAt)
+	if err := s1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s2, err := Open(path)
+	if err != nil {
+		t.Fatalf("second open (idempotent no-op) failed: %v", err)
+	}
+	defer s2.Close()
+	assertProfileRow(t, s2, "after second Open (idempotent no-op)", wantJSON, wantUpdatedAt)
+
+	// The adopted legacy row must also be reachable through the normal Store
+	// API once a user exists to own it.
+	u, err := s2.UpsertUser("google", "g-1", "a@e.com", "A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s2.LoadProfile(u.ID)
+	if err != nil || got == nil || got.Name != "Legacy Ada" {
+		t.Fatalf("want adopted legacy profile loadable via LoadProfile, got %+v, %v", got, err)
+	}
+}
+
 func TestMigrationAddsCoverColumnsIdempotently(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "v1.db")
 
