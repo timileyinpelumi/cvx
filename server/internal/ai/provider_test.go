@@ -7,7 +7,7 @@ import (
 
 func clearLLMEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"CVX_LLM_PROVIDER", "CVX_LLM_MODEL", "GROQ_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"} {
+	for _, k := range []string{"CVX_LLM_PROVIDER", "CVX_LLM_MODEL", "GROQ_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AGENTROUTER_API_KEY"} {
 		t.Setenv(k, "")
 	}
 }
@@ -45,7 +45,7 @@ func TestNewFromEnvUnknownProvider(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unknown provider")
 	}
-	want := `unknown CVX_LLM_PROVIDER "bogus" (want groq, openai, or anthropic)`
+	want := `unknown CVX_LLM_PROVIDER "bogus" (want groq, openai, anthropic, or agentrouter)`
 	if err.Error() != want {
 		t.Fatalf("want %q, got %q", want, err.Error())
 	}
@@ -188,8 +188,34 @@ func TestNewWithProviderModelUnknownProvider(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unknown provider")
 	}
-	want := `unknown provider "bogus" (want groq, openai, or anthropic)`
+	want := `unknown provider "bogus" (want groq, openai, anthropic, or agentrouter)`
 	if err.Error() != want {
 		t.Fatalf("want %q, got %q", want, err.Error())
+	}
+}
+
+func TestNewFromEnvAgentRouter(t *testing.T) {
+	clearLLMEnv(t)
+	t.Setenv("CVX_LLM_PROVIDER", "agentrouter")
+	t.Setenv("AGENTROUTER_API_KEY", "ark")
+
+	llm, desc, err := NewFromEnv()
+	if err != nil {
+		t.Fatalf("NewFromEnv: %v", err)
+	}
+	if llm == nil {
+		t.Fatal("want non-nil LLM")
+	}
+	if desc != "agentrouter/claude-opus-5" {
+		t.Fatalf("want agentrouter/claude-opus-5, got %q", desc)
+	}
+}
+
+func TestNewFromEnvAgentRouterMissingKey(t *testing.T) {
+	clearLLMEnv(t)
+	t.Setenv("CVX_LLM_PROVIDER", "agentrouter")
+
+	if _, _, err := NewFromEnv(); err == nil || !strings.Contains(err.Error(), "AGENTROUTER_API_KEY") {
+		t.Fatalf("want error naming AGENTROUTER_API_KEY, got %v", err)
 	}
 }
