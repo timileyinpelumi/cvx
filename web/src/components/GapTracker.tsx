@@ -18,7 +18,6 @@ export function GapTracker({ trends, total }: GapTrackerProps) {
 
   return (
     <section className="gap-tracker">
-      <h2 className="section-heading">Recurring gaps</h2>
       <ul className="gap-tracker-list">
         {trends.map((trend) => (
           <li key={trend.requirement} className="gap-tracker-row">

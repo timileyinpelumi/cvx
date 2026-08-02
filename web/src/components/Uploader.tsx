@@ -11,11 +11,13 @@ export type ProfileSummary = {
 
 type UploaderProps = {
   onUploaded: (profile: ProfileSummary) => void;
+  // Same upload, second time around: the copy can't still say "start".
+  replace?: boolean;
 };
 
 type Status = "idle" | "uploading" | "error";
 
-export function Uploader({ onUploaded }: UploaderProps) {
+export function Uploader({ onUploaded, replace = false }: UploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
@@ -88,10 +90,13 @@ export function Uploader({ onUploaded }: UploaderProps) {
       onDragOver={handleDragOver}
       onDragLeave={() => setDragging(false)}
     >
-      <h2 className="uploader-heading">Start with your current resume</h2>
+      <h2 className="uploader-heading">
+        {replace ? "Replace your resume" : "Start with your current resume"}
+      </h2>
       <p className="uploader-body">
-        Upload it once. cvx reads everything into your profile, and every
-        tailored resume is cut from there.
+        {replace
+          ? "Upload a new PDF. cvx reads it in and replaces the profile it holds now."
+          : "Upload it once. cvx reads everything into your profile, and every tailored resume is cut from there."}
       </p>
 
       <div className="uploader-action">

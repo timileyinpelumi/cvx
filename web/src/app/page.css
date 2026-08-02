@@ -44,10 +44,89 @@
   text-wrap: balance;
 }
 
+/* The tab row carries its own space below it, so the masthead gives up some
+   of its own when the nav follows it. */
+.masthead:has(+ .nav) {
+  margin-bottom: 24px;
+}
+
 @media (min-width: 768px) {
   .masthead {
     margin-bottom: 48px;
   }
+
+  .masthead:has(+ .nav) {
+    margin-bottom: 32px;
+  }
+}
+
+/* ------------------------------------------------------------------ nav -- */
+
+.nav {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 32px;
+  /* Four short labels fit at 360px, but the row scrolls rather than pushing
+     the page sideways if the labels or the user's font ever grow. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nav::-webkit-scrollbar {
+  display: none;
+}
+
+.nav-tab {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+/* Inset so the ring is never clipped by the scrolling row. */
+.nav-tab:focus-visible {
+  outline-offset: -2px;
+}
+
+.nav-tab:hover {
+  color: var(--ink);
+}
+
+.nav-tab.is-active {
+  color: var(--ink);
+  border-bottom-color: var(--chalk);
+}
+
+@media (min-width: 768px) {
+  .nav {
+    margin-bottom: 40px;
+  }
+}
+
+/* ---------------------------------------------------------------- views -- */
+
+.view-heading {
+  font-family: var(--font-body);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.view-empty {
+  max-width: 34ch;
+  margin: 0 auto;
+  padding: 40px 0;
+  color: var(--muted);
+  text-align: center;
+  text-wrap: balance;
 }
 
 /* The state area holds either the uploader or the tailor composer, never both,
@@ -164,9 +243,12 @@
   overflow-wrap: anywhere;
 }
 
-/* ------------------------------------------------------------- uploader -- */
+/* --------------------------------------------------- uploader / sign-in -- */
 
-.uploader {
+/* The two entry screens share one card treatment: whichever you land on, the
+   first thing cvx shows you is a heading and an action. */
+.uploader,
+.signin {
   padding: 20px;
   background: var(--card);
   border: 1px solid var(--edge);
@@ -180,7 +262,8 @@
   background: color-mix(in srgb, var(--chalk) 4%, var(--card));
 }
 
-.uploader-heading {
+.uploader-heading,
+.signin-heading {
   font-family: var(--font-body);
   font-size: 24px;
   font-weight: 600;
@@ -199,93 +282,59 @@
 }
 
 @media (min-width: 481px) {
-  .uploader {
+  .uploader,
+  .signin {
     padding: 24px;
   }
 
-  .uploader-heading {
+  .uploader-heading,
+  .signin-heading {
     font-size: 26px;
   }
 }
 
 @media (min-width: 768px) {
-  .uploader {
+  .uploader,
+  .signin {
     padding: 32px;
   }
 
-  .uploader-heading {
+  .uploader-heading,
+  .signin-heading {
     font-size: 28px;
   }
 }
 
-/* -------------------------------------------------------------- passcode -- */
+/* -------------------------------------------------------------- sign-in -- */
 
-.passcode {
-  padding: 20px;
-  background: var(--card);
-  border: 1px solid var(--edge);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
-}
-
-.passcode-heading {
-  font-family: var(--font-body);
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.passcode-row {
+.signin-providers {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  align-items: stretch;
+  gap: 8px;
   margin-top: 24px;
 }
 
-.passcode-field {
-  display: block;
-  width: 100%;
+/* Sign-in is the whole screen's one job, so its buttons keep the full 44px
+   target at every width instead of relaxing to 40px like the rest, and stay
+   the card's width so the two providers read as one stack. */
+.signin-providers .btn {
   min-height: 44px;
-  padding: 0 16px;
-  background: var(--card);
-  border: 1px solid var(--edge);
-  border-radius: var(--radius-control);
-  font-family: var(--font-mono);
-  /* 16px keeps iOS from zooming the viewport when the field takes focus. */
-  font-size: 16px;
-  color: var(--ink);
-  transition: border-color 120ms ease;
-}
-
-.passcode-field:hover {
-  border-color: color-mix(in srgb, var(--edge) 55%, var(--muted));
-}
-
-.passcode-field:disabled {
-  color: var(--muted);
-  opacity: 1;
-  -webkit-text-fill-color: var(--muted);
+  justify-content: flex-start;
 }
 
 @media (min-width: 481px) {
-  .passcode {
-    padding: 24px;
-  }
-
-  .passcode-field {
-    font-size: 15px;
+  /* Narrower than the uploader card: a heading and two buttons would rattle
+     around in the full 660px column. */
+  .signin {
+    max-width: 420px;
   }
 }
 
-@media (min-width: 768px) {
-  .passcode {
-    padding: 32px;
-  }
-}
-
-/* --------------------------------------------------------- profile line -- */
+/* --------------------------------------------------------- profile view -- */
 
 .profile-line {
-  margin-bottom: 12px;
+  margin: 12px 0 16px;
   font-size: 14px;
   color: var(--muted);
 }
@@ -303,6 +352,33 @@
 .profile-count {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+.profile-replace-panel {
+  margin-top: 16px;
+}
+
+.profile-account {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--edge);
+}
+
+.account-line {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.profile-account .btn {
+  margin-top: 16px;
+}
+
+@media (min-width: 768px) {
+  .profile-account {
+    margin-top: 40px;
+  }
 }
 
 /* ----------------------------------------------------------- profile update -- */
@@ -710,20 +786,7 @@
 
 /* ------------------------------------------------------------- archive -- */
 
-.archive {
-  margin-top: 48px;
-}
-
-.section-heading {
-  font-family: var(--font-body);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  color: var(--muted);
-}
-
 .archive-list {
-  margin-top: 8px;
   padding: 0;
   list-style: none;
 }
@@ -838,20 +901,9 @@
   }
 }
 
-@media (min-width: 768px) {
-  .archive {
-    margin-top: 64px;
-  }
-}
-
 /* --------------------------------------------------------- gap tracker -- */
 
-.gap-tracker {
-  margin-top: 48px;
-}
-
 .gap-tracker-list {
-  margin-top: 8px;
   padding: 0;
   list-style: none;
 }
@@ -904,11 +956,5 @@
     align-items: baseline;
     justify-content: space-between;
     gap: 24px;
-  }
-}
-
-@media (min-width: 768px) {
-  .gap-tracker {
-    margin-top: 64px;
   }
 }

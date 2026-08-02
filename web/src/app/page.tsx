@@ -6,8 +6,9 @@ import { Archive, type GenerationMeta } from "@/components/Archive";
 import { GapTracker, type GapTrend } from "@/components/GapTracker";
 import { Generator } from "@/components/Generator";
 import { Logo } from "@/components/Logo";
-import { Passcode } from "@/components/Passcode";
-import { ProfileUpdate } from "@/components/ProfileUpdate";
+import { Nav, PANEL_ID, tabId, type View } from "@/components/Nav";
+import { ProfileView, type Me } from "@/components/ProfileView";
+import { SignIn } from "@/components/SignIn";
 import { Stitch } from "@/components/Stitch";
 import { Uploader, type ProfileSummary } from "@/components/Uploader";
 import type { GenerateResult } from "@/components/ResultTag";
@@ -16,16 +17,17 @@ import "./page.css";
 
 export default function Home() {
   const [loaded, setLoaded] = useState(false);
+  const [me, setMe] = useState<Me | null>(null);
+  const [view, setView] = useState<View>("tailor");
   const [profile, setProfile] = useState<ProfileSummary | null>(null);
   const [generations, setGenerations] = useState<GenerationMeta[]>([]);
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [gapTrends, setGapTrends] = useState<GapTrend[]>([]);
   const [gapTotal, setGapTotal] = useState(0);
-  const [unauthorized, setUnauthorized] = useState(false);
 
-  // Each loader reports whether it hit a 401 rather than setting unauthorized
-  // itself, so load() below can set that state once after Promise.all
-  // resolves instead of synchronously inside the effect.
+  // Each loader reports whether it hit a 401 rather than signing the user out
+  // itself, so the caller can act once after Promise.all resolves instead of
+  // tearing the page down mid-flight.
   const loadProfile = useCallback(async () => {
     try {
       const res = await fetch("/api/profile");
@@ -47,7 +49,7 @@ export default function Home() {
       setGenerations((await res.json()) as GenerationMeta[]);
       return false;
     } catch {
-      // The archive is supplementary; a failed load just leaves it hidden.
+      // The archive is supplementary; a failed load just leaves it empty.
       return false;
     }
   }, []);
@@ -62,34 +64,59 @@ export default function Home() {
       setGapTrends(data.trends);
       return false;
     } catch {
-      // The gap tracker is supplementary; a failed load just leaves it hidden.
+      // The gap tracker is supplementary; a failed load just leaves it empty.
       return false;
     }
   }, []);
 
-  // reloadKey bumps re-run the bootstrap effect below — used by
-  // Passcode.onUnlocked so a successful login re-runs the exact same
-  // bootstrap that 401'd on the previous attempt.
-  const [reloadKey, setReloadKey] = useState(0);
+  const signOut = useCallback(() => {
+    setMe(null);
+    setView("tailor");
+    setProfile(null);
+    setGenerations([]);
+    setResult(null);
+    setGapTrends([]);
+    setGapTotal(0);
+  }, []);
 
   useEffect(() => {
-    async function load() {
-      const results = await Promise.all([loadProfile(), loadGenerations(), loadGaps()]);
-      setUnauthorized(results.some(Boolean));
+    async function boot() {
+      let user: Me | null = null;
+      try {
+        const res = await fetch("/api/me");
+        if (res.ok) user = (await res.json()) as Me;
+      } catch {
+        // An unreachable server reads as signed out: sign-in is the only
+        // screen that can help, and it retries the moment it mounts.
+      }
+      if (user === null) {
+        setLoaded(true);
+        return;
+      }
+      const results = await Promise.all([
+        loadProfile(),
+        loadGenerations(),
+        loadGaps(),
+      ]);
+      setMe(results.some(Boolean) ? null : user);
       setLoaded(true);
     }
-    void load();
-  }, [loadProfile, loadGenerations, loadGaps, reloadKey]);
+    void boot();
+  }, [loadProfile, loadGenerations, loadGaps]);
 
   function handleResult(next: GenerateResult) {
     setResult(next);
     void (async () => {
       const results = await Promise.all([loadGenerations(), loadGaps()]);
-      if (results.some(Boolean)) setUnauthorized(true);
+      if (results.some(Boolean)) signOut();
     })();
   }
 
-  const earlier = generations.filter((row) => row.id !== result?.id);
+  const signedIn = loaded && me !== null;
+  // A fresh account has nothing to put behind tabs yet, so the upload sits on
+  // the page on its own until there is a profile to navigate.
+  const onboarding = signedIn && profile === null;
+  const navigating = signedIn && profile !== null;
 
   return (
     <div className="shell">
@@ -103,38 +130,54 @@ export default function Home() {
         </p>
       </header>
 
-      <main className="stage">
-        {unauthorized ? (
-          <Passcode onUnlocked={() => setReloadKey((k) => k + 1)} />
-        ) : (
-          <>
-            {loaded && profile === null ? (
-              <Uploader onUploaded={setProfile} />
-            ) : null}
+      {navigating ? <Nav view={view} onChange={setView} /> : null}
 
-            {loaded && profile !== null ? (
-              <>
-                <p className="profile-line">
-                  <span className="profile-name">{profile.name}</span>
-                  <span className="profile-sep">·</span>
-                  <span className="profile-count">{profile.itemCount}</span> items
-                  <span className="profile-sep">·</span>
-                  <span className="profile-count">{profile.skillCount}</span> skills
-                </p>
-                <ProfileUpdate onUpdated={setProfile} />
-                <Generator result={result} onResult={handleResult} />
-              </>
-            ) : null}
-          </>
-        )}
+      <main
+        className="stage"
+        {...(navigating
+          ? {
+              id: PANEL_ID,
+              role: "tabpanel",
+              "aria-labelledby": tabId(view),
+              tabIndex: 0,
+            }
+          : {})}
+      >
+        {loaded && me === null ? <SignIn /> : null}
+
+        {onboarding ? <Uploader onUploaded={setProfile} /> : null}
+
+        {navigating && view === "tailor" ? (
+          <Generator result={result} onResult={handleResult} />
+        ) : null}
+
+        {navigating && view === "history" ? (
+          generations.length > 0 ? (
+            <Archive rows={generations} />
+          ) : (
+            <p className="view-empty">Nothing here yet. Tailor your first resume.</p>
+          )
+        ) : null}
+
+        {navigating && view === "gaps" ? (
+          gapTrends.length > 0 ? (
+            <GapTracker trends={gapTrends} total={gapTotal} />
+          ) : (
+            <p className="view-empty">
+              No recurring gaps yet. They show up after a few generations.
+            </p>
+          )
+        ) : null}
+
+        {navigating && view === "profile" && me !== null && profile !== null ? (
+          <ProfileView
+            profile={profile}
+            me={me}
+            onProfile={setProfile}
+            onSignedOut={signOut}
+          />
+        ) : null}
       </main>
-
-      {unauthorized ? null : (
-        <>
-          <Archive rows={earlier} />
-          <GapTracker trends={gapTrends} total={gapTotal} />
-        </>
-      )}
     </div>
   );
 }

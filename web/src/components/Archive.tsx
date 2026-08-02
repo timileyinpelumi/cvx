@@ -30,7 +30,6 @@ export function Archive({ rows }: ArchiveProps) {
 
   return (
     <section className="archive">
-      <h2 className="section-heading">Earlier resumes</h2>
       <ul className="archive-list">
         {rows.map((row) => (
           <li key={row.id} className="archive-row">
