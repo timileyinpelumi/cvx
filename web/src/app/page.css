@@ -827,26 +827,44 @@
 
 /* ------------------------------------------------------------- archive -- */
 
+.archive-search {
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 16px;
+  padding: 0 12px;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-control);
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.archive-search::placeholder {
+  color: var(--muted);
+}
+
 .archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   padding: 0;
   list-style: none;
 }
 
-.archive-row {
+.archive-card {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 8px 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
 }
 
-.archive-row + .archive-row {
-  border-top: 1px solid var(--edge);
-}
-
-/* Role over date on mobile, side by side from 481px. */
-.archive-meta {
+.archive-info {
   display: flex;
-  flex: 1 1 auto;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
@@ -857,88 +875,77 @@
   overflow-wrap: break-word;
 }
 
-.archive-date {
+.archive-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--muted);
 }
 
-.archive-links {
-  display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  align-items: flex-end;
-}
-
-.archive-link {
+.archive-gaps {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
-  color: var(--chalk);
-  font-weight: 500;
+  gap: 4px;
 }
 
-.archive-link:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+.gap-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.gap-dot.is-weak {
+  background: var(--gap-weak);
+}
+
+.gap-dot.is-missing {
+  background: var(--gap-missing);
+}
+
+.archive-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.archive-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-control);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.archive-action:hover {
+  color: var(--chalk);
+  border-color: var(--chalk);
+}
+
+@media (max-width: 480px) {
+  .archive-action-label {
+    display: none;
+  }
+
+  .archive-action {
+    padding: 0 12px;
+  }
 }
 
 @media (min-width: 481px) {
-  .archive-row {
-    flex-wrap: wrap;
-    column-gap: 24px;
-    row-gap: 8px;
-    padding: 4px 0;
-  }
-
-  .archive-meta {
+  .archive-card {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
-    /* Wide enough that a second link wraps to its own line instead of
-       squeezing the role. */
-    min-width: 260px;
     gap: 24px;
-  }
-
-  .archive-links {
-    flex-direction: row;
-    align-items: center;
-    margin-left: auto;
-    gap: 24px;
-  }
-}
-
-@media (min-width: 768px) {
-  /* One grid for the whole list so role, date and links line up across rows
-     even when only some rows carry a cover letter. */
-  .archive-list {
-    display: grid;
-    grid-template-columns: 1fr auto auto auto;
-  }
-
-  .archive-row {
-    display: grid;
-    grid-column: 1 / -1;
-    grid-template-columns: subgrid;
-    align-items: center;
-    /* Column spacing is padding rather than a gap so the cover letter column
-       takes no room at all in a list that has none. */
-    column-gap: 0;
-  }
-
-  .archive-meta,
-  .archive-links {
-    display: contents;
-  }
-
-  .archive-date {
-    justify-self: end;
-    padding-left: 24px;
-  }
-
-  .archive-link {
-    padding-left: 24px;
   }
 }
 
