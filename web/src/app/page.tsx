@@ -8,6 +8,7 @@ import { Generator } from "@/components/Generator";
 import { Logo } from "@/components/Logo";
 import { Nav, type View } from "@/components/Nav";
 import { ProfileView, type Me } from "@/components/ProfileView";
+import { SettingsView } from "@/components/SettingsView";
 import { SignIn } from "@/components/SignIn";
 import { Stitch } from "@/components/Stitch";
 import { Uploader, type ProfileSummary } from "@/components/Uploader";
@@ -170,6 +171,10 @@ export default function Home() {
               No recurring gaps yet. They show up after a few generations.
             </p>
           )
+        ) : null}
+
+        {navigating && view === "settings" ? (
+          <SettingsView onSignedOut={signOut} />
         ) : null}
 
         {navigating && view === "profile" && me !== null && profile !== null ? (

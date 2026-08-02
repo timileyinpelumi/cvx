@@ -1,14 +1,21 @@
 "use client";
 
-import { Archive as ArchiveIcon, Flag, Scissors, User } from "lucide-react";
+import {
+  Archive as ArchiveIcon,
+  Flag,
+  Scissors,
+  SlidersHorizontal,
+  User,
+} from "lucide-react";
 
-export type View = "tailor" | "history" | "gaps" | "profile";
+export type View = "tailor" | "history" | "gaps" | "profile" | "settings";
 
 const ITEMS = [
   { view: "tailor", label: "Tailor", Icon: Scissors },
   { view: "history", label: "History", Icon: ArchiveIcon },
   { view: "gaps", label: "Gaps", Icon: Flag },
   { view: "profile", label: "Profile", Icon: User },
+  { view: "settings", label: "Settings", Icon: SlidersHorizontal },
 ] as const;
 
 type NavProps = {
