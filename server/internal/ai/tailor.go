@@ -43,6 +43,13 @@ Selection rules:
   requirements instead.
 - Leave out any item that evidences none of the role's requirements, even if
   that means a shorter resume. Never include an item just to reach the limit.
+- Fullness: when the profile holds more genuinely relevant evidence than
+  you have selected, prefer the fuller selection. For a role the profile
+  matches head-on, target 4-5 items carrying 3-4 bullets each before
+  stopping; a thin resume from a rich profile wastes real evidence. This
+  never overrides the rules above: padding with weak items, stretching
+  bullets, or force-fitting stays forbidden, and a stretch role may stay
+  short with the gaps list carrying the difference.
 - Every item you include must carry 2-4 bullets. If only one of an item's
   bullets is worth showing for this role, drop the whole item rather than
   output it with a single bullet.

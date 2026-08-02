@@ -1,30 +1,830 @@
 {
-  "label": "rubric2-round2",
-  "generatedAt": "2026-08-02T10:22:13.08388327Z",
+  "label": "content-floor",
+  "generatedAt": "2026-08-02T12:53:51.192736814Z",
+  "fixtures": [
+    {
+      "id": "backend-go",
+      "title": "Senior Backend Engineer (Go)",
+      "checks": [
+        {
+          "name": "guardrail",
+          "pass": true,
+          "detail": "ok"
+        },
+        {
+          "name": "itemCount",
+          "pass": true,
+          "detail": "4 items"
+        },
+        {
+          "name": "bulletsPerItem",
+          "pass": true,
+          "detail": "all items have 2-4 bullets"
+        },
+        {
+          "name": "summary",
+          "pass": true,
+          "detail": "25 words"
+        },
+        {
+          "name": "headline",
+          "pass": true,
+          "detail": "non-empty"
+        },
+        {
+          "name": "gapsWellFormed",
+          "pass": true,
+          "detail": "4 gaps"
+        },
+        {
+          "name": "selectedSkillsSubset",
+          "pass": true,
+          "detail": "10 skills, all in profile"
+        }
+      ],
+      "resume": {
+        "selection": {
+          "score": 8,
+          "rationale": "Chose the most relevant Go‑payments items, omitted only minor less‑relevant bullets"
+        },
+        "vocabulary": {
+          "score": 7,
+          "rationale": "Mirrors many key terms, but misses SLO/alerting language"
+        },
+        "bulletStrength": {
+          "score": 9,
+          "rationale": "Outcome‑oriented bullets with metrics"
+        },
+        "honesty": {
+          "score": 10,
+          "rationale": "All claims traceable to profile"
+        },
+        "gapQuality": {
+          "score": 9,
+          "rationale": "Identified realistic, actionable gaps"
+        },
+        "headlineSummary": {
+          "score": 9,
+          "rationale": "Accurate, compelling, matches role"
+        }
+      }
+    },
+    {
+      "id": "backend-python",
+      "title": "Senior Backend Engineer (Python)",
+      "checks": [
+        {
+          "name": "guardrail",
+          "pass": true,
+          "detail": "ok"
+        },
+        {
+          "name": "itemCount",
+          "pass": true,
+          "detail": "2 items"
+        },
+        {
+          "name": "bulletsPerItem",
+          "pass": true,
+          "detail": "all items have 2-4 bullets"
+        },
+        {
+          "name": "summary",
+          "pass": true,
+          "detail": "35 words"
+        },
+        {
+          "name": "headline",
+          "pass": true,
+          "detail": "non-empty"
+        },
+        {
+          "name": "gapsWellFormed",
+          "pass": true,
+          "detail": "10 gaps"
+        },
+        {
+          "name": "selectedSkillsSubset",
+          "pass": true,
+          "detail": "6 skills, all in profile"
+        }
+      ],
+      "resume": {
+        "selection": {
+          "score": 8,
+          "rationale": "Selected the most Python/Django/healthcare-focused bullets and omitted Go/TS or unrelated items, resulting in a concise yet relevant representation of the profile."
+        },
+        "vocabulary": {
+          "score": 9,
+          "rationale": "Mirrors job language with Django, FastAPI, Celery, HL7, PostgreSQL, HIPAA, on‑call, observability; no unsupported keywords."
+        },
+        "bulletStrength": {
+          "score": 9,
+          "rationale": "Each bullet includes concrete metrics, outcomes, and technology specifics, avoiding generic duty statements."
+        },
+        "honesty": {
+          "score": 10,
+          "rationale": "All claims directly map to profile bullets; no fabricated numbers or unsupported skills."
+        },
+        "gapQuality": {
+          "score": 9,
+          "rationale": "Gaps list is factual, matches missing requirements, and is actionable for future improvement."
+        },
+        "headlineSummary": {
+          "score": 10,
+          "rationale": "Headline and summary accurately reflect the candidate’s actual Python/Django experience and healthcare domain work, presenting a truthful transition."
+        }
+      }
+    },
+    {
+      "id": "backend-node",
+      "title": "Senior Backend Engineer (Node.js / TypeScript)",
+      "checks": [
+        {
+          "name": "guardrail",
+          "pass": true,
+          "detail": "ok"
+        },
+        {
+          "name": "itemCount",
+          "pass": true,
+          "detail": "4 items"
+        },
+        {
+          "name": "bulletsPerItem",
+          "pass": true,
+          "detail": "all items have 2-4 bullets"
+        },
+        {
+          "name": "summary",
+          "pass": true,
+          "detail": "43 words"
+        },
+        {
+          "name": "headline",
+          "pass": true,
+          "detail": "non-empty"
+        },
+        {
+          "name": "gapsWellFormed",
+          "pass": true,
+          "detail": "6 gaps"
+        },
+        {
+          "name": "selectedSkillsSubset",
+          "pass": true,
+          "detail": "8 skills, all in profile"
+        }
+      ],
+      "resume": {
+        "selection": {
+          "score": 8,
+          "rationale": "Included only bullets that directly address Node.js/TS, PostgreSQL, event‑driven design, migrations and on‑call, omitted unrelated Go‑only ledger work. Good relevance."
+        },
+        "vocabulary": {
+          "score": 8,
+          "rationale": "Mirrors JD terms such as Kafka, PostgreSQL, migration, on‑call, idempotent; no unsupported jargon used; GraphQL and SQS absent because profile lacks evidence."
+        },
+        "bulletStrength": {
+          "score": 10,
+          "rationale": "All bullets are specific, outcome‑oriented, and quantitatively described."
+        },
+        "honesty": {
+          "score": 10,
+          "rationale": "Every claim is traceable to the profile JSON; no fabricated data."
+        },
+        "gapQuality": {
+          "score": 9,
+          "rationale": "Gaps list genuine missing experience (Node.js/TS recent, GraphQL, async JS, IaC, logistics domain, feature flags) and are actionable."
+        },
+        "headlineSummary": {
+          "score": 10,
+          "rationale": "Headline and summary accurately represent the candidate’s experience and relevance to the role; honest and compelling."
+        }
+      }
+    },
+    {
+      "id": "frontend-react",
+      "title": "Senior Frontend Engineer (React / TypeScript)",
+      "checks": [
+        {
+          "name": "guardrail",
+          "pass": true,
+          "detail": "ok"
+        },
+        {
+          "name": "itemCount",
+          "pass": true,
+          "detail": "1 items"
+        },
+        {
+          "name": "bulletsPerItem",
+          "pass": true,
+          "detail": "all items have 2-4 bullets"
+        },
+        {
+          "name": "summary",
+          "pass": true,
+          "detail": "32 words"
+        },
+        {
+          "name": "headline",
+          "pass": true,
+          "detail": "non-empty"
+        },
+        {
+          "name": "gapsWellFormed",
+          "pass": true,
+          "detail": "9 gaps"
+        },
+        {
+          "name": "selectedSkillsSubset",
+          "pass": true,
+          "detail": "3 skills, all in profile"
+        }
+      ],
+      "resume": {
+        "selection": {
+          "score": 8,
+          "rationale": "The resume selects only the Loom Labs role, the sole experience with React/TypeScript, and omits unrelated backend work."
+        },
+        "vocabulary": {
+          "score": 7,
+          "rationale": "It uses core terms like React and TypeScript from the job description, but omits GraphQL, accessibility, and performance keywords that are relevant and supported by the profile."
+        },
+        "bulletStrength": {
+          "score": 6,
+          "rationale": "Bullets are specific and outcome‑oriented, yet the second bullet is backend‑centric and lacks depth on performance and accessibility."
+        },
+        "honesty": {
+          "score": 10,
+          "rationale": "All claims directly trace back to the profile, with no unsupported numbers or skills."
+        },
+        "gapQuality": {
+          "score": 9,
+          "rationale": "Gaps accurately list missing experience required by the role and are actionable."
+        },
+        "headlineSummary": {
+          "score": 8,
+          "rationale": "Headline and summary truthfully represent the candidate’s React/TypeScript work and highlight a 500‑customer UI, making it compelling for the senior frontend role."
+        }
+      }
+    },
+    {
+      "id": "fullstack",
+      "title": "Fullstack Engineer (React / Node)",
+      "checks": [
+        {
+          "name": "guardrail",
+          "pass": true,
+          "detail": "ok"
+        },
+        {
+          "name": "itemCount",
+          "pass": true,
+          "detail": "2 items"
+        },
+        {
+          "name": "bulletsPerItem",
+          "pass": true,
+          "detail": "all items have 2-4 bullets"
+        },
+        {
+          "name": "summary",
+          "pass": true,
+          "detail": "25 words"
+        },
+        {
+          "name": "headline",
+          "pass": true,
+          "detail": "non-empty"
+        },
+        {
+          "name": "gapsWellFormed",
+          "pass": true,
+          "detail": "2 gaps"
+        },
+        {
+          "name": "selectedSkillsSubset",
+          "pass": true,
+          "detail": "5 skills, all in profile"
+        }
+      ],
+      "resume": {
+        "selection": {
+          "score": 8,
+          "rationale": "Picked Loom Labs fullstack and key backend bullets while omitting unrelated backend‑only work; most relevant items chosen."
+        },
+        "vocabulary": {
+          "score": 9,
+          "rationale": "Mirrors job language with React/TypeScript, Node.js, PostgreSQL, REST API; no unsupported keywords."
+        },
+        "bulletStrength": {
+          "score": 8,
+          "rationale": "Bullets are specific, outcome‑oriented, include metrics and concrete actions."
+        },
+        "honesty": {
+          "score": 10,
+          "rationale": "All claims trace back to profile; no invented facts."
+        },
+        "gapQuality": {
+          "score": 9,
+          "rationale": "Gaps reflect real missing experience (fullstack years, testing depth) and are actionable."
+        },
+        "headlineSummary": {
+          "score": 9,
+          "rationale": "Headline and summary accurately and compellingly represent candidate’s strengths for this role."
+        }
+      }
+    },
+    {
+      "id": "devops-sre",
+      "title": "Site Reliability Engineer",
+      "checks": [
+        {
+          "name": "guardrail",
+          "pass": true,
+          "detail": "ok"
+        },
+        {
+          "name": "itemCount",
+          "pass": true,
+          "detail": "3 items"
+        },
+        {
+          "name": "bulletsPerItem",
+          "pass": true,
+          "detail": "all items have 2-4 bullets"
+        },
+        {
+          "name": "summary",
+          "pass": true,
+          "detail": "30 words"
+        },
+        {
+          "name": "headline",
+          "pass": true,
+          "detail": "non-empty"
+        },
+        {
+          "name": "gapsWellFormed",
+          "pass": true,
+          "detail": "6 gaps"
+        },
+        {
+          "name": "selectedSkillsSubset",
+          "pass": true,
+          "detail": "10 skills, all in profile"
+        }
+      ],
+      "resume": {
+        "selection": {
+          "score": 9,
+          "rationale": "Chose strongest Kubernetes, observability, incident response, and automation bullets; omitted unrelated or weaker items; gaps transparently listed."
+        },
+        "vocabulary": {
+          "score": 8,
+          "rationale": "Mirrors key SRE terms (Kubernetes, on‑call, postmortem, observability) present in profile; missing Terraform and SLO terms are gaps, not forced keywords."
+        },
+        "bulletStrength": {
+          "score": 9,
+          "rationale": "Bullets contain quantifiable metrics and outcome focus (latency, incident time, migration scale)."
+        },
+        "honesty": {
+          "score": 10,
+          "rationale": "Every claim is traceable to source bullets in profile; no unsupported statements."
+        },
+        "gapQuality": {
+          "score": 8,
+          "rationale": "Gaps accurately reflect missing Terraform, SLO, CI/CD, multi‑region ops, service mesh, video streaming experience; they are realistic and actionable."
+        },
+        "headlineSummary": {
+          "score": 9,
+          "rationale": "Headline and summary truthfully showcase Go, Kubernetes, observability, and on‑call leadership, and align with SRE role."
+        }
+      }
+    },
+    {
+      "id": "platform",
+      "title": "Platform Engineer",
+      "checks": [
+        {
+          "name": "guardrail",
+          "pass": true,
+          "detail": "ok"
+        },
+        {
+          "name": "itemCount",
+          "pass": true,
+          "detail": "4 items"
+        },
+        {
+          "name": "bulletsPerItem",
+          "pass": true,
+          "detail": "all items have 2-4 bullets"
+        },
+        {
+          "name": "summary",
+          "pass": true,
+          "detail": "30 words"
+        },
+        {
+          "name": "headline",
+          "pass": true,
+          "detail": "non-empty"
+        },
+        {
+          "name": "gapsWellFormed",
+          "pass": true,
+          "detail": "5 gaps"
+        },
+        {
+          "name": "selectedSkillsSubset",
+          "pass": true,
+          "detail": "6 skills, all in profile"
+        }
+      ],
+      "resume": {
+        "selection": {
+          "score": 8,
+          "rationale": "Picks the strongest platform‑relevant bullets from the profile (Kubernetes migration, observability, on‑call) and omits weaker or unrelated backend bullets; no force‑fitting of unrelated items."
+        },
+        "vocabulary": {
+          "score": 9,
+          "rationale": "Mirrors key job terms—self‑service, Kubernetes, CI/CD, observability—where the profile supports them; does not include unsupported terms like Terraform."
+        },
+        "bulletStrength": {
+          "score": 9,
+          "rationale": "All bullets are specific, outcome‑oriented with metrics (latency, incident time, GitHub stars) and traceable to the profile."
+        },
+        "honesty": {
+          "score": 10,
+          "rationale": "Every claim is directly verifiable against the profile; no fabricated numbers or unsupported skills."
+        },
+        "gapQuality": {
+          "score": 10,
+          "rationale": "Gaps listed are real, required by the job, and actionable, with clear evidence of absence in the profile."
+        },
+        "headlineSummary": {
+          "score": 9,
+          "rationale": "Headline and summary accurately represent the candidate’s experience and honest positioning for a platform role."
+        }
+      }
+    },
+    {
+      "id": "data-engineer",
+      "title": "Senior Data Engineer",
+      "checks": [
+        {
+          "name": "guardrail",
+          "pass": true,
+          "detail": "ok"
+        },
+        {
+          "name": "itemCount",
+          "pass": true,
+          "detail": "3 items"
+        },
+        {
+          "name": "bulletsPerItem",
+          "pass": true,
+          "detail": "all items have 2-4 bullets"
+        },
+        {
+          "name": "summary",
+          "pass": true,
+          "detail": "34 words"
+        },
+        {
+          "name": "headline",
+          "pass": true,
+          "detail": "non-empty"
+        },
+        {
+          "name": "gapsWellFormed",
+          "pass": true,
+          "detail": "7 gaps"
+        },
+        {
+          "name": "selectedSkillsSubset",
+          "pass": true,
+          "detail": "9 skills, all in profile"
+        }
+      ],
+      "resume": {
+        "selection": {
+          "score": 8,
+          "rationale": "Selected most relevant backend and data‑pipeline bullets; omitted unrelated full‑stack and blockchain work; gaps acknowledged."
+        },
+        "vocabulary": {
+          "score": 8,
+          "rationale": "Mirrors key terms like ingestion, pipeline, observability, Kafka; no unsupported keywords; acknowledges missing Airflow/Spark/etc."
+        },
+        "bulletStrength": {
+          "score": 9,
+          "rationale": "Bullets are metric‑driven and outcome oriented, e.g., error reduction, latency improvement."
+        },
+        "honesty": {
+          "score": 10,
+          "rationale": "Every claim can be traced directly to profile bullets; no invented metrics."
+        },
+        "gapQuality": {
+          "score": 9,
+          "rationale": "Gaps list accurately missing core skills and are actionable."
+        },
+        "headlineSummary": {
+          "score": 9,
+          "rationale": "Headline and summary truthfully portray senior backend/data‑engineer experience, fintech domain, and 4+ years of data‑engineering."
+        }
+      }
+    },
+    {
+      "id": "ml-engineer",
+      "title": "Machine Learning Engineer (LLM / MLOps)",
+      "checks": [
+        {
+          "name": "guardrail",
+          "pass": true,
+          "detail": "ok"
+        },
+        {
+          "name": "itemCount",
+          "pass": true,
+          "detail": "4 items"
+        },
+        {
+          "name": "bulletsPerItem",
+          "pass": true,
+          "detail": "all items have 2-4 bullets"
+        },
+        {
+          "name": "summary",
+          "pass": true,
+          "detail": "35 words"
+        },
+        {
+          "name": "headline",
+          "pass": true,
+          "detail": "non-empty"
+        },
+        {
+          "name": "gapsWellFormed",
+          "pass": true,
+          "detail": "8 gaps"
+        },
+        {
+          "name": "selectedSkillsSubset",
+          "pass": true,
+          "detail": "7 skills, all in profile"
+        }
+      ],
+      "resume": {
+        "selection": {
+          "score": 8,
+          "rationale": "Chosen bullets emphasize deployment, latency, observability, matching MLOps needs, omitting unrelated UI/solidity work."
+        },
+        "vocabulary": {
+          "score": 8,
+          "rationale": "Mirrors job terms like Docker, Kubernetes, latency; no unsupported ML jargon introduced."
+        },
+        "bulletStrength": {
+          "score": 9,
+          "rationale": "Each bullet is metric‑driven, specific, and outcome oriented."
+        },
+        "honesty": {
+          "score": 10,
+          "rationale": "All claims directly trace to profile bullets; no fabricated achievements."
+        },
+        "gapQuality": {
+          "score": 9,
+          "rationale": "Gaps accurately reflect missing ML experience and are actionable to address."
+        },
+        "headlineSummary": {
+          "score": 9,
+          "rationale": "Headline and summary truthfully represent background and honest transition intent."
+        }
+      }
+    },
+    {
+      "id": "mobile",
+      "title": "Senior Mobile Engineer (React Native)",
+      "checks": [
+        {
+          "name": "guardrail",
+          "pass": true,
+          "detail": "ok"
+        },
+        {
+          "name": "itemCount",
+          "pass": true,
+          "detail": "4 items"
+        },
+        {
+          "name": "bulletsPerItem",
+          "pass": true,
+          "detail": "all items have 2-4 bullets"
+        },
+        {
+          "name": "summary",
+          "pass": true,
+          "detail": "38 words"
+        },
+        {
+          "name": "headline",
+          "pass": true,
+          "detail": "non-empty"
+        },
+        {
+          "name": "gapsWellFormed",
+          "pass": true,
+          "detail": "7 gaps"
+        },
+        {
+          "name": "selectedSkillsSubset",
+          "pass": true,
+          "detail": "5 skills, all in profile"
+        }
+      ],
+      "resume": {
+        "selection": {
+          "score": 4,
+          "rationale": "Selected items cover React/TypeScript UI and backend performance, but lack any mobile or native experience; gaps remain."
+        },
+        "vocabulary": {
+          "score": 7,
+          "rationale": "Used job‑relevant terms such as React, TypeScript, and performance, but omitted mobile‑specific terms not supported by profile."
+        },
+        "bulletStrength": {
+          "score": 9,
+          "rationale": "Bullets are specific, measurable, and outcome‑oriented, directly citing metrics and results."
+        },
+        "honesty": {
+          "score": 10,
+          "rationale": "All claims traceable to the profile; no unsupported statements."
+        },
+        "gapQuality": {
+          "score": 9,
+          "rationale": "Gaps list accurately reflects missing mobile competencies and is actionable."
+        },
+        "headlineSummary": {
+          "score": 8,
+          "rationale": "Headline and summary honestly position the candidate as a backend engineer with transferable skills; they avoid overstating mobile experience."
+        }
+      }
+    },
+    {
+      "id": "web3-solidity",
+      "title": "Smart Contract Engineer (Solidity)",
+      "checks": [
+        {
+          "name": "guardrail",
+          "pass": true,
+          "detail": "ok"
+        },
+        {
+          "name": "itemCount",
+          "pass": true,
+          "detail": "1 items"
+        },
+        {
+          "name": "bulletsPerItem",
+          "pass": true,
+          "detail": "all items have 2-4 bullets"
+        },
+        {
+          "name": "summary",
+          "pass": true,
+          "detail": "29 words"
+        },
+        {
+          "name": "headline",
+          "pass": true,
+          "detail": "non-empty"
+        },
+        {
+          "name": "gapsWellFormed",
+          "pass": true,
+          "detail": "7 gaps"
+        },
+        {
+          "name": "selectedSkillsSubset",
+          "pass": true,
+          "detail": "4 skills, all in profile"
+        }
+      ],
+      "resume": {
+        "selection": {
+          "score": 8,
+          "rationale": "Selected the Aurora Lend project and its relevant bullets, omitting unrelated backend roles."
+        },
+        "vocabulary": {
+          "score": 7,
+          "rationale": "Mirrors key job terms like Foundry, audit, gas, but omits advanced concepts not in profile."
+        },
+        "bulletStrength": {
+          "score": 9,
+          "rationale": "Bullets are specific, outcome‑oriented, and metric‑backed."
+        },
+        "honesty": {
+          "score": 10,
+          "rationale": "All claims trace directly to the profile data."
+        },
+        "gapQuality": {
+          "score": 8,
+          "rationale": "Gaps list accurately flags missing audited deployment and other requirements."
+        },
+        "headlineSummary": {
+          "score": 9,
+          "rationale": "Headline and summary present candidly with verified achievements."
+        }
+      }
+    },
+    {
+      "id": "security",
+      "title": "Senior Application Security Engineer",
+      "checks": [
+        {
+          "name": "guardrail",
+          "pass": true,
+          "detail": "ok"
+        },
+        {
+          "name": "itemCount",
+          "pass": true,
+          "detail": "4 items"
+        },
+        {
+          "name": "bulletsPerItem",
+          "pass": true,
+          "detail": "all items have 2-4 bullets"
+        },
+        {
+          "name": "summary",
+          "pass": true,
+          "detail": "28 words"
+        },
+        {
+          "name": "headline",
+          "pass": true,
+          "detail": "non-empty"
+        },
+        {
+          "name": "gapsWellFormed",
+          "pass": true,
+          "detail": "14 gaps"
+        },
+        {
+          "name": "selectedSkillsSubset",
+          "pass": true,
+          "detail": "7 skills, all in profile"
+        }
+      ],
+      "resume": {
+        "selection": {
+          "score": 8,
+          "rationale": "Focused on security-relevant bullets, omitted unrelated experience; no forced fit."
+        },
+        "vocabulary": {
+          "score": 7,
+          "rationale": "Mirrors some security terms; lacks deeper job-specific keywords but no unsupported stuffing."
+        },
+        "bulletStrength": {
+          "score": 8,
+          "rationale": "Specific, outcome-oriented bullets with metrics; clear accomplishments."
+        },
+        "honesty": {
+          "score": 10,
+          "rationale": "All claims traceable to profile; no fabricated details."
+        },
+        "gapQuality": {
+          "score": 9,
+          "rationale": "Gaps reflect genuine missing role requirements; actionable."
+        },
+        "headlineSummary": {
+          "score": 8,
+          "rationale": "Compelling headline/summary; honest transition without overstating security role."
+        }
+      }
+    }
+  ],
   "aggregate": {
     "meanByDimension": {
-      "bulletStrength": 8.75,
-      "factuality": 9.166666666666666,
-      "gapQuality": 9,
-      "headlineSummary": 8.416666666666666,
-      "honesty": 9.916666666666666,
+      "bulletStrength": 8.666666666666666,
+      "gapQuality": 8.916666666666666,
+      "headlineSummary": 8.916666666666666,
+      "honesty": 10,
       "selection": 7.75,
-      "specificity": 8.166666666666666,
-      "vocabulary": 6.916666666666667,
-      "voice": 8.5
+      "vocabulary": 7.833333333333333
     },
     "scoredFixtures": {
       "bulletStrength": 12,
-      "factuality": 12,
       "gapQuality": 12,
       "headlineSummary": 12,
       "honesty": 12,
       "selection": 12,
-      "specificity": 12,
-      "vocabulary": 12,
-      "voice": 12
+      "vocabulary": 12
     },
-    "overallMean": 8.50925925925926,
+    "overallMean": 8.680555555555555,
     "deterministicPassRate": 1,
     "totalFixtures": 12,
     "erroredFixtures": 0,
