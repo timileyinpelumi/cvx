@@ -129,6 +129,36 @@ func devAuth(st *store.Store) *auth.Auth {
 	return &auth.Auth{Store: st, DevUserEmail: "dev@test.local"}
 }
 
+// devUserID upserts (or fetches) the same dev-mode user devAuth's middleware
+// would resolve every request to, so tests that write directly to the store
+// (bypassing HTTP) can scope those writes to the user the HTTP layer will
+// later query as.
+func devUserID(t *testing.T, st *store.Store) int64 {
+	t.Helper()
+	u, err := st.UpsertUser("dev", "dev@test.local", "dev@test.local", "dev@test.local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u.ID
+}
+
+// newTestServerAs builds a Server+Echo pair sharing st but authenticated (in
+// dev mode) as a distinct email, so isolation tests can drive two "users"
+// against the same underlying database the way two real signed-in sessions
+// would.
+func newTestServerAs(t *testing.T, st *store.Store, email string) (*Server, *echo.Echo) {
+	t.Helper()
+	s := &Server{
+		Store: st,
+		LLM:   fakeLLM{},
+		Mail:  func(model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Auth:  &auth.Auth{Store: st, DevUserEmail: email},
+	}
+	e := echo.New()
+	s.Register(e)
+	return s, e
+}
+
 func newTestServerWithLLM(t *testing.T, llm ai.LLM) (*Server, *echo.Echo) {
 	t.Helper()
 	st := newStore(t)
@@ -501,7 +531,7 @@ func TestGenerationsListNilSlicesSerializeAsEmptyArrays(t *testing.T) {
 	s.Register(e)
 
 	ta := model.Tailored{TargetRole: "X", Gaps: nil, WhatChanged: nil}
-	if _, err := st.SaveGeneration(ta, []byte("pdf-bytes"), "x.pdf", nil, ""); err != nil {
+	if _, err := st.SaveGeneration(devUserID(t, st), ta, []byte("pdf-bytes"), "x.pdf", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -530,11 +560,12 @@ func TestGapsEndpointShape(t *testing.T) {
 	e := echo.New()
 	s.Register(e)
 
+	userID := devUserID(t, st)
 	mk := func(gaps ...model.Gap) model.Tailored { return model.Tailored{TargetRole: "X", Gaps: gaps} }
-	if _, err := st.SaveGeneration(mk(model.Gap{Requirement: "Django", Evidence: "e1", Severity: "missing"}), []byte("p"), "a.pdf", nil, ""); err != nil {
+	if _, err := st.SaveGeneration(userID, mk(model.Gap{Requirement: "Django", Evidence: "e1", Severity: "missing"}), []byte("p"), "a.pdf", nil, ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.SaveGeneration(mk(model.Gap{Requirement: "django", Evidence: "e2", Severity: "missing"}), []byte("p"), "b.pdf", nil, ""); err != nil {
+	if _, err := st.SaveGeneration(userID, mk(model.Gap{Requirement: "django", Evidence: "e2", Severity: "missing"}), []byte("p"), "b.pdf", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -811,5 +842,147 @@ func TestGenerateEmailsBothPDFsWhenCoverExists(t *testing.T) {
 	}
 	if len(gotCoverPDF) == 0 || gotCoverFilename == "" {
 		t.Fatalf("want cover pdf/filename passed to Mail, got %d bytes, filename %q", len(gotCoverPDF), gotCoverFilename)
+	}
+}
+
+// TestDataIsolatedPerUser checks per-user scoping end-to-end at the HTTP
+// layer: two dev-mode "users" sharing one store never see each other's
+// profile or generations. User A uploads a profile and generates a resume
+// (with a cover letter); user B must see no profile (404), an empty
+// generations list, empty gaps, and 404s downloading A's PDF/cover PDF by
+// id. User B then uploads their own profile and confirms it — not A's — is
+// what GET /api/profile returns for them.
+func TestDataIsolatedPerUser(t *testing.T) {
+	st := newStore(t)
+	_, eA := newTestServerAs(t, st, "userA@test.local")
+	_, eB := newTestServerAs(t, st, "userB@test.local")
+
+	rec := httptest.NewRecorder()
+	eA.ServeHTTP(rec, uploadRequest(t, []byte("%PDF-fake")))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("userA seed upload failed: %d %s", rec.Code, rec.Body)
+	}
+
+	rec = httptest.NewRecorder()
+	eA.ServeHTTP(rec, generateRequestBodyWithCover("Python Backend Engineer", true))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("userA generate failed: %d %s", rec.Code, rec.Body)
+	}
+	var genA generateResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &genA); err != nil {
+		t.Fatal(err)
+	}
+
+	// User B has no profile of their own yet.
+	rec = httptest.NewRecorder()
+	eB.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for userB's own profile, got %d: %s", rec.Code, rec.Body)
+	}
+
+	// User B's generations list must not include userA's generation.
+	rec = httptest.NewRecorder()
+	eB.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var listB []store.GenerationMeta
+	if err := json.Unmarshal(rec.Body.Bytes(), &listB); err != nil {
+		t.Fatal(err)
+	}
+	if len(listB) != 0 {
+		t.Fatalf("want empty generations list for userB, got %+v", listB)
+	}
+
+	// User B's gaps must be empty even though userA's generation has gaps.
+	rec = httptest.NewRecorder()
+	eB.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/gaps", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"total":0`) || !strings.Contains(body, `"trends":[]`) {
+		t.Fatalf("want empty gaps for userB, got %s", body)
+	}
+
+	// User B cannot download userA's generation PDF or cover PDF by id.
+	rec = httptest.NewRecorder()
+	eB.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations/"+genA.ID+"/pdf", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for userB downloading userA's pdf, got %d: %s", rec.Code, rec.Body)
+	}
+	rec = httptest.NewRecorder()
+	eB.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations/"+genA.ID+"/cover", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for userB downloading userA's cover pdf, got %d: %s", rec.Code, rec.Body)
+	}
+
+	// User A still sees their own data throughout.
+	rec = httptest.NewRecorder()
+	eA.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations", nil))
+	var listA []store.GenerationMeta
+	if err := json.Unmarshal(rec.Body.Bytes(), &listA); err != nil {
+		t.Fatal(err)
+	}
+	if len(listA) != 1 || listA[0].ID != genA.ID {
+		t.Fatalf("want userA's own generation still visible, got %+v", listA)
+	}
+
+	// User B uploads their own profile: it must be independent of userA's.
+	rec = httptest.NewRecorder()
+	eB.ServeHTTP(rec, uploadRequest(t, []byte("%PDF-fake")))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("userB upload failed: %d %s", rec.Code, rec.Body)
+	}
+	rec = httptest.NewRecorder()
+	eB.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for userB's own profile after upload, got %d: %s", rec.Code, rec.Body)
+	}
+	rec = httptest.NewRecorder()
+	eA.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want userA's profile unaffected by userB's upload, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// TestHandlersGuardMissingUserIDContext exercises the defensive 401 branch
+// each handler carries for the case where it runs without the auth
+// middleware having set a userID in context — a path that should be
+// unreachable through Register's real routing (every /api/* route sits
+// behind Auth.Middleware) but is guarded anyway. Calling the handler
+// directly, bypassing Register/Middleware entirely, is the only way to
+// exercise it.
+func TestHandlersGuardMissingUserIDContext(t *testing.T) {
+	st := newStore(t)
+	s := &Server{
+		Store: st,
+		LLM:   fakeLLM{},
+		Mail:  func(model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Auth:  devAuth(st),
+	}
+	e := echo.New()
+
+	newContext := func(req *http.Request) (echo.Context, *httptest.ResponseRecorder) {
+		rec := httptest.NewRecorder()
+		return e.NewContext(req, rec), rec
+	}
+
+	c, rec := newContext(httptest.NewRequest(http.MethodGet, "/api/profile", nil))
+	if err := s.getProfile(c); err != nil {
+		t.Fatalf("want handler to write the 401 response directly, got error %v", err)
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d: %s", rec.Code, rec.Body)
+	}
+
+	c, rec = newContext(httptest.NewRequest(http.MethodGet, "/api/generations/some-id/pdf", nil))
+	c.SetParamNames("id")
+	c.SetParamValues("some-id")
+	if err := s.getGenerationPDF(c); err != nil {
+		t.Fatalf("want handler to write the 401 response directly, got error %v", err)
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d: %s", rec.Code, rec.Body)
 	}
 }

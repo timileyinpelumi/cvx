@@ -18,82 +18,214 @@ func open(t *testing.T) *Store {
 	return s
 }
 
+// testUser creates a distinct user via UpsertUser and returns its id, so
+// store tests can exercise per-user scoping without hand-rolling users-table
+// rows.
+func testUser(t *testing.T, s *Store, provider, providerID string) int64 {
+	t.Helper()
+	u, err := s.UpsertUser(provider, providerID, providerID+"@example.com", providerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u.ID
+}
+
 func TestProfileRoundTrip(t *testing.T) {
 	s := open(t)
-	if p, err := s.LoadProfile(); err != nil || p != nil {
+	userID := testUser(t, s, "google", "u-1")
+	if p, err := s.LoadProfile(userID); err != nil || p != nil {
 		t.Fatalf("want nil,nil got %v,%v", p, err)
 	}
 	prof := model.Profile{Name: "Ada", Items: []model.Item{{Title: "Engineer"}}}
 	model.AssignIDs(&prof)
-	if err := s.SaveProfile(prof); err != nil {
+	if err := s.SaveProfile(userID, prof); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SaveProfile(prof); err != nil { // upsert, not duplicate
+	if err := s.SaveProfile(userID, prof); err != nil { // upsert, not duplicate
 		t.Fatal(err)
 	}
-	p, err := s.LoadProfile()
+	p, err := s.LoadProfile(userID)
 	if err != nil || p.Name != "Ada" || p.Items[0].ID != "item-0" {
 		t.Fatalf("got %+v, %v", p, err)
 	}
 }
 
+// TestProfileUpsertIsPerUser checks that SaveProfile/LoadProfile are scoped
+// by user_id: two users each get their own row, a repeat save for one user
+// upserts in place (never creates a second row for that user, never touches
+// the other user's row), and the table ends up with exactly one row per user.
+func TestProfileUpsertIsPerUser(t *testing.T) {
+	s := open(t)
+	userA := testUser(t, s, "google", "a-1")
+	userB := testUser(t, s, "google", "b-1")
+
+	profA := model.Profile{Name: "Ada"}
+	model.AssignIDs(&profA)
+	if err := s.SaveProfile(userA, profA); err != nil {
+		t.Fatal(err)
+	}
+	profB := model.Profile{Name: "Bob"}
+	model.AssignIDs(&profB)
+	if err := s.SaveProfile(userB, profB); err != nil {
+		t.Fatal(err)
+	}
+
+	gotA, err := s.LoadProfile(userA)
+	if err != nil || gotA == nil || gotA.Name != "Ada" {
+		t.Fatalf("got %+v, %v", gotA, err)
+	}
+	gotB, err := s.LoadProfile(userB)
+	if err != nil || gotB == nil || gotB.Name != "Bob" {
+		t.Fatalf("got %+v, %v", gotB, err)
+	}
+
+	// Re-saving for userA upserts in place: userA's row updates, userB's is untouched.
+	profA2 := model.Profile{Name: "Ada v2"}
+	model.AssignIDs(&profA2)
+	if err := s.SaveProfile(userA, profA2); err != nil {
+		t.Fatal(err)
+	}
+	gotA2, err := s.LoadProfile(userA)
+	if err != nil || gotA2 == nil || gotA2.Name != "Ada v2" {
+		t.Fatalf("got %+v, %v", gotA2, err)
+	}
+	gotBAgain, err := s.LoadProfile(userB)
+	if err != nil || gotBAgain == nil || gotBAgain.Name != "Bob" {
+		t.Fatalf("userB profile changed unexpectedly: got %+v, %v", gotBAgain, err)
+	}
+
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM profile`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("want 2 profile rows (one per user), got %d", count)
+	}
+}
+
+// TestLoadProfileAbsentForUserWithNoProfile checks that a user who has never
+// saved a profile gets nil,nil, even once other users' profiles exist.
+func TestLoadProfileAbsentForUserWithNoProfile(t *testing.T) {
+	s := open(t)
+	userA := testUser(t, s, "google", "a-1")
+	userB := testUser(t, s, "google", "b-1")
+
+	prof := model.Profile{Name: "Ada"}
+	model.AssignIDs(&prof)
+	if err := s.SaveProfile(userA, prof); err != nil {
+		t.Fatal(err)
+	}
+
+	p, err := s.LoadProfile(userB)
+	if err != nil || p != nil {
+		t.Fatalf("want nil,nil for userB (no profile saved), got %v,%v", p, err)
+	}
+}
+
+// TestGenerationsIsolatedPerUser checks that a generation saved by one user
+// is completely invisible to another: absent from ListGenerations,
+// GetGenerationPDF/GetGenerationCoverPDF return nil, and it doesn't factor
+// into the other user's GapSummary.
+func TestGenerationsIsolatedPerUser(t *testing.T) {
+	s := open(t)
+	userA := testUser(t, s, "google", "a-1")
+	userB := testUser(t, s, "google", "b-1")
+
+	ta := model.Tailored{TargetRole: "X", Gaps: []model.Gap{{Requirement: "Django", Severity: "missing"}}}
+	metaA, err := s.SaveGeneration(userA, ta, []byte("pdf-a"), "a.pdf", []byte("cover-a"), "a-cover.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	listB, err := s.ListGenerations(userB)
+	if err != nil || len(listB) != 0 {
+		t.Fatalf("want empty list for userB, got %+v, %v", listB, err)
+	}
+	listA, err := s.ListGenerations(userA)
+	if err != nil || len(listA) != 1 || listA[0].ID != metaA.ID {
+		t.Fatalf("want 1 generation for userA, got %+v, %v", listA, err)
+	}
+
+	if pdf, fn, err := s.GetGenerationPDF(userB, metaA.ID); err != nil || pdf != nil || fn != "" {
+		t.Fatalf("want nil pdf for userB accessing userA's generation, got %q %q %v", pdf, fn, err)
+	}
+	if pdf, fn, err := s.GetGenerationPDF(userA, metaA.ID); err != nil || string(pdf) != "pdf-a" || fn != "a.pdf" {
+		t.Fatalf("want userA to see their own pdf, got %q %q %v", pdf, fn, err)
+	}
+
+	if pdf, fn, err := s.GetGenerationCoverPDF(userB, metaA.ID); err != nil || pdf != nil || fn != "" {
+		t.Fatalf("want nil cover pdf for userB accessing userA's generation, got %q %q %v", pdf, fn, err)
+	}
+
+	trendsB, totalB, err := s.GapSummary(userB)
+	if err != nil || totalB != 0 || len(trendsB) != 0 {
+		t.Fatalf("want empty gap summary for userB, got total=%d trends=%+v err=%v", totalB, trendsB, err)
+	}
+	trendsA, totalA, err := s.GapSummary(userA)
+	if err != nil || totalA != 1 {
+		t.Fatalf("want total 1 for userA, got total=%d trends=%+v err=%v", totalA, trendsA, err)
+	}
+}
+
 func TestGenerations(t *testing.T) {
 	s := open(t)
+	userID := testUser(t, s, "google", "u-1")
 	ta := model.Tailored{TargetRole: "Python Backend Engineer", Gaps: []model.Gap{{Requirement: "Django", Severity: "missing"}}, WhatChanged: []string{"x"}}
-	a, err := s.SaveGeneration(ta, []byte("pdf-a"), "a.pdf", nil, "")
+	a, err := s.SaveGeneration(userID, ta, []byte("pdf-a"), "a.pdf", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(5 * time.Millisecond)
-	b, _ := s.SaveGeneration(ta, []byte("pdf-b"), "b.pdf", nil, "")
-	list, err := s.ListGenerations()
+	b, _ := s.SaveGeneration(userID, ta, []byte("pdf-b"), "b.pdf", nil, "")
+	list, err := s.ListGenerations(userID)
 	if err != nil || len(list) != 2 || list[0].ID != b.ID || list[1].ID != a.ID {
 		t.Fatalf("bad list: %+v %v", list, err)
 	}
 	if list[1].Gaps[0].Requirement != "Django" {
 		t.Fatalf("gaps not persisted: %+v", list[1])
 	}
-	pdf, fn, err := s.GetGenerationPDF(a.ID)
+	pdf, fn, err := s.GetGenerationPDF(userID, a.ID)
 	if err != nil || string(pdf) != "pdf-a" || fn != "a.pdf" {
 		t.Fatalf("got %q %q %v", pdf, fn, err)
 	}
-	if pdf, _, err := s.GetGenerationPDF("nope"); err != nil || pdf != nil {
+	if pdf, _, err := s.GetGenerationPDF(userID, "nope"); err != nil || pdf != nil {
 		t.Fatalf("want nil,nil for unknown id, got %q %v", pdf, err)
 	}
 }
 
 func TestGenerationsWithCoverLetter(t *testing.T) {
 	s := open(t)
+	userID := testUser(t, s, "google", "u-1")
 	ta := model.Tailored{TargetRole: "X"}
 
-	withCover, err := s.SaveGeneration(ta, []byte("pdf"), "x.pdf", []byte("cover-pdf"), "x-cover.pdf")
+	withCover, err := s.SaveGeneration(userID, ta, []byte("pdf"), "x.pdf", []byte("cover-pdf"), "x-cover.pdf")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !withCover.HasCoverLetter {
 		t.Fatalf("want HasCoverLetter true, got %+v", withCover)
 	}
-	pdf, fn, err := s.GetGenerationCoverPDF(withCover.ID)
+	pdf, fn, err := s.GetGenerationCoverPDF(userID, withCover.ID)
 	if err != nil || string(pdf) != "cover-pdf" || fn != "x-cover.pdf" {
 		t.Fatalf("got %q %q %v", pdf, fn, err)
 	}
 
 	time.Sleep(5 * time.Millisecond)
-	withoutCover, err := s.SaveGeneration(ta, []byte("pdf2"), "y.pdf", nil, "")
+	withoutCover, err := s.SaveGeneration(userID, ta, []byte("pdf2"), "y.pdf", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if withoutCover.HasCoverLetter {
 		t.Fatalf("want HasCoverLetter false, got %+v", withoutCover)
 	}
-	if pdf, fn, err := s.GetGenerationCoverPDF(withoutCover.ID); err != nil || pdf != nil || fn != "" {
+	if pdf, fn, err := s.GetGenerationCoverPDF(userID, withoutCover.ID); err != nil || pdf != nil || fn != "" {
 		t.Fatalf("want nil,\"\" for absent cover, got %q %q %v", pdf, fn, err)
 	}
-	if _, _, err := s.GetGenerationCoverPDF("nope"); err != nil {
+	if _, _, err := s.GetGenerationCoverPDF(userID, "nope"); err != nil {
 		t.Fatalf("want nil error for unknown id, got %v", err)
 	}
 
-	list, err := s.ListGenerations()
+	list, err := s.ListGenerations(userID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,25 +243,26 @@ func TestGenerationsWithCoverLetter(t *testing.T) {
 
 func TestGapSummaryGroupsCasingFiltersSingletonsAndTracksNewest(t *testing.T) {
 	s := open(t)
+	userID := testUser(t, s, "google", "u-1")
 
 	mk := func(gaps ...model.Gap) model.Tailored { return model.Tailored{TargetRole: "X", Gaps: gaps} }
 
-	if _, err := s.SaveGeneration(mk(model.Gap{Requirement: "Django", Evidence: "e1", Severity: "missing"}), []byte("p"), "a.pdf", nil, ""); err != nil {
+	if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Django", Evidence: "e1", Severity: "missing"}), []byte("p"), "a.pdf", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(5 * time.Millisecond)
-	if _, err := s.SaveGeneration(mk(
+	if _, err := s.SaveGeneration(userID, mk(
 		model.Gap{Requirement: "django", Evidence: "e2", Severity: "weak"},
 		model.Gap{Requirement: "Kubernetes", Evidence: "e-k", Severity: "missing"},
 	), []byte("p"), "b.pdf", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(5 * time.Millisecond)
-	if _, err := s.SaveGeneration(mk(model.Gap{Requirement: "Django", Evidence: "e3-latest", Severity: "missing"}), []byte("p"), "c.pdf", nil, ""); err != nil {
+	if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Django", Evidence: "e3-latest", Severity: "missing"}), []byte("p"), "c.pdf", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
-	trends, total, err := s.GapSummary()
+	trends, total, err := s.GapSummary(userID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,21 +291,22 @@ func TestGapSummaryGroupsCasingFiltersSingletonsAndTracksNewest(t *testing.T) {
 // still contribute only 1 to Count, not 2.
 func TestGapSummaryDedupesWithinGeneration(t *testing.T) {
 	s := open(t)
+	userID := testUser(t, s, "google", "u-1")
 
 	mk := func(gaps ...model.Gap) model.Tailored { return model.Tailored{TargetRole: "X", Gaps: gaps} }
 
-	if _, err := s.SaveGeneration(mk(
+	if _, err := s.SaveGeneration(userID, mk(
 		model.Gap{Requirement: "Django", Evidence: "e1", Severity: "missing"},
 		model.Gap{Requirement: "django ", Evidence: "e1-dup", Severity: "weak"},
 	), []byte("p"), "a.pdf", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(5 * time.Millisecond)
-	if _, err := s.SaveGeneration(mk(model.Gap{Requirement: "Django", Evidence: "e2", Severity: "missing"}), []byte("p"), "b.pdf", nil, ""); err != nil {
+	if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Django", Evidence: "e2", Severity: "missing"}), []byte("p"), "b.pdf", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
-	trends, total, err := s.GapSummary()
+	trends, total, err := s.GapSummary(userID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,31 +327,32 @@ func TestGapSummaryDedupesWithinGeneration(t *testing.T) {
 
 func TestGapSummaryOrdering(t *testing.T) {
 	s := open(t)
+	userID := testUser(t, s, "google", "u-1")
 
 	mk := func(gaps ...model.Gap) model.Tailored { return model.Tailored{TargetRole: "X", Gaps: gaps} }
 
 	// "Zeta" appears 3 times, "Alpha" appears 3 times (ties go alphabetical),
 	// "Beta" appears 2 times: expect order Alpha, Zeta, Beta.
 	for i := 0; i < 3; i++ {
-		if _, err := s.SaveGeneration(mk(model.Gap{Requirement: "Zeta", Evidence: "e", Severity: "missing"}), []byte("p"), "z.pdf", nil, ""); err != nil {
+		if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Zeta", Evidence: "e", Severity: "missing"}), []byte("p"), "z.pdf", nil, ""); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
 	for i := 0; i < 3; i++ {
-		if _, err := s.SaveGeneration(mk(model.Gap{Requirement: "Alpha", Evidence: "e", Severity: "missing"}), []byte("p"), "a.pdf", nil, ""); err != nil {
+		if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Alpha", Evidence: "e", Severity: "missing"}), []byte("p"), "a.pdf", nil, ""); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
 	for i := 0; i < 2; i++ {
-		if _, err := s.SaveGeneration(mk(model.Gap{Requirement: "Beta", Evidence: "e", Severity: "weak"}), []byte("p"), "b.pdf", nil, ""); err != nil {
+		if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Beta", Evidence: "e", Severity: "weak"}), []byte("p"), "b.pdf", nil, ""); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
 
-	trends, total, err := s.GapSummary()
+	trends, total, err := s.GapSummary(userID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +373,8 @@ func TestGapSummaryOrdering(t *testing.T) {
 
 func TestGapSummaryNoGenerations(t *testing.T) {
 	s := open(t)
-	trends, total, err := s.GapSummary()
+	userID := testUser(t, s, "google", "u-1")
+	trends, total, err := s.GapSummary(userID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,19 +450,25 @@ func TestGetUserReturnsInsertedUser(t *testing.T) {
 }
 
 // TestUpsertUserAdoptsLegacyRowsOnFirstUserOnly seeds a profile and a
-// generation the old-fashioned way (before any user exists, so their
-// user_id is NULL), then checks that creating the very first user adopts
-// both rows, and that creating a second user afterwards does NOT re-adopt
-// (the legacy rows stay with the first user).
+// generation the old-fashioned way (direct SQL, bypassing SaveProfile/
+// SaveGeneration which now always stamp a user_id) so their user_id is NULL,
+// simulating rows written before per-user auth existed. It then checks that
+// creating the very first user adopts both rows, and that creating a second
+// user afterwards does NOT re-adopt (the legacy rows stay with the first
+// user).
 func TestUpsertUserAdoptsLegacyRowsOnFirstUserOnly(t *testing.T) {
 	s := open(t)
 
-	prof := model.Profile{Name: "Legacy"}
-	model.AssignIDs(&prof)
-	if err := s.SaveProfile(prof); err != nil {
+	if _, err := s.db.Exec(
+		`INSERT INTO profile (json, updated_at) VALUES (?, ?)`,
+		`{"name":"Legacy"}`, time.Now().UTC().Format(time.RFC3339),
+	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.SaveGeneration(model.Tailored{TargetRole: "X"}, []byte("pdf"), "x.pdf", nil, ""); err != nil {
+	if _, err := s.db.Exec(
+		`INSERT INTO generations (id, target_role, filename, created_at, tailored_json, pdf) VALUES (?, ?, ?, ?, ?, ?)`,
+		"legacy-1", "X", "x.pdf", time.Now().UTC().Format(time.RFC3339), `{"targetRole":"X"}`, []byte("pdf"),
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -436,9 +578,10 @@ func TestMigrationAddsCoverColumnsIdempotently(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first reopen (migration) failed: %v", err)
 	}
+	userID := testUser(t, s1, "google", "u-1")
 
 	ta := model.Tailored{TargetRole: "X"}
-	meta, err := s1.SaveGeneration(ta, []byte("pdf"), "x.pdf", []byte("cover-pdf"), "x-cover.pdf")
+	meta, err := s1.SaveGeneration(userID, ta, []byte("pdf"), "x.pdf", []byte("cover-pdf"), "x-cover.pdf")
 	if err != nil {
 		t.Fatalf("save using migrated columns failed: %v", err)
 	}
@@ -455,7 +598,7 @@ func TestMigrationAddsCoverColumnsIdempotently(t *testing.T) {
 	}
 	defer s2.Close()
 
-	pdf, fn, err := s2.GetGenerationCoverPDF(meta.ID)
+	pdf, fn, err := s2.GetGenerationCoverPDF(userID, meta.ID)
 	if err != nil || string(pdf) != "cover-pdf" || fn != "x-cover.pdf" {
 		t.Fatalf("got %q %q %v", pdf, fn, err)
 	}

@@ -14,7 +14,7 @@ import (
 )
 
 const schema = `
-CREATE TABLE IF NOT EXISTS profile (id INTEGER PRIMARY KEY CHECK (id = 1), json TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS profile (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, json TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS generations (
   id TEXT PRIMARY KEY, target_role TEXT NOT NULL, filename TEXT NOT NULL,
   created_at TEXT NOT NULL, tailored_json TEXT NOT NULL, pdf BLOB NOT NULL,
@@ -144,29 +144,65 @@ func migrate(db *sql.DB) error {
 		}
 	}
 
+	if err := migrateProfileDropSingleRowCheck(db); err != nil {
+		return err
+	}
+
+	// A UNIQUE index (rather than UNIQUE(user_id) inline on the column) is
+	// what makes ON CONFLICT(user_id) in SaveProfile's upsert legal; "IF NOT
+	// EXISTS" makes this safe to run on every Open, including against a
+	// database that already has it (fresh installs get it from schema
+	// creation implicitly via this same call).
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_profile_user_id ON profile(user_id)`); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// migrateProfileDropSingleRowCheck rebuilds the profile table on databases
+// that predate per-user profiles: the original schema pinned id to a single
+// row via CHECK (id = 1), which is incompatible with storing one profile row
+// per user. Detected via sqlite_master's stored CREATE TABLE text, so this is
+// a no-op — safe to run on every Open — once a database has been rebuilt or
+// was created fresh with the current schema (which has no CHECK).
+func migrateProfileDropSingleRowCheck(db *sql.DB) error {
+	var createSQL string
+	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'profile'`).Scan(&createSQL); err != nil {
+		return err
+	}
+	if !strings.Contains(createSQL, "CHECK") {
+		return nil
+	}
+	_, err := db.Exec(`
+		CREATE TABLE profile_new (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, json TEXT NOT NULL, updated_at TEXT NOT NULL);
+		INSERT INTO profile_new (id, user_id, json, updated_at) SELECT id, user_id, json, updated_at FROM profile;
+		DROP TABLE profile;
+		ALTER TABLE profile_new RENAME TO profile;
+	`)
+	return err
 }
 
 func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) SaveProfile(p model.Profile) error {
+func (s *Store) SaveProfile(userID int64, p model.Profile) error {
 	b, err := json.Marshal(p)
 	if err != nil {
 		return err
 	}
 	_, err = s.db.Exec(
-		`INSERT INTO profile (id, json, updated_at) VALUES (1, ?, ?)
-		 ON CONFLICT(id) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at`,
-		string(b), time.Now().UTC().Format(time.RFC3339),
+		`INSERT INTO profile (user_id, json, updated_at) VALUES (?, ?, ?)
+		 ON CONFLICT(user_id) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at`,
+		userID, string(b), time.Now().UTC().Format(time.RFC3339),
 	)
 	return err
 }
 
-func (s *Store) LoadProfile() (*model.Profile, error) {
+func (s *Store) LoadProfile(userID int64) (*model.Profile, error) {
 	var raw string
-	err := s.db.QueryRow(`SELECT json FROM profile WHERE id = 1`).Scan(&raw)
+	err := s.db.QueryRow(`SELECT json FROM profile WHERE user_id = ?`, userID).Scan(&raw)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -190,7 +226,7 @@ func slug(role string) string {
 // optional cover letter PDF alongside it. coverPDF == nil (or coverFilename
 // == "") means no cover letter was generated for this run; both are stored
 // as SQL NULL in that case rather than empty-but-present values.
-func (s *Store) SaveGeneration(t model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (GenerationMeta, error) {
+func (s *Store) SaveGeneration(userID int64, t model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (GenerationMeta, error) {
 	id := time.Now().UTC().Format("20060102T150405.000") + "-" + slug(t.TargetRole)
 	b, err := json.Marshal(t)
 	if err != nil {
@@ -208,8 +244,8 @@ func (s *Store) SaveGeneration(t model.Tailored, pdf []byte, filename string, co
 	}
 
 	_, err = s.db.Exec(
-		`INSERT INTO generations (id, target_role, filename, created_at, tailored_json, pdf, cover_pdf, cover_filename) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, t.TargetRole, filename, createdAt, string(b), pdf, coverPDFArg, coverFilenameArg,
+		`INSERT INTO generations (id, target_role, filename, created_at, tailored_json, pdf, cover_pdf, cover_filename, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, t.TargetRole, filename, createdAt, string(b), pdf, coverPDFArg, coverFilenameArg, userID,
 	)
 	if err != nil {
 		return GenerationMeta{}, err
@@ -225,9 +261,10 @@ func (s *Store) SaveGeneration(t model.Tailored, pdf []byte, filename string, co
 	}, nil
 }
 
-func (s *Store) ListGenerations() ([]GenerationMeta, error) {
+func (s *Store) ListGenerations(userID int64) ([]GenerationMeta, error) {
 	rows, err := s.db.Query(
-		`SELECT id, target_role, filename, created_at, tailored_json, cover_filename FROM generations ORDER BY id DESC`,
+		`SELECT id, target_role, filename, created_at, tailored_json, cover_filename FROM generations WHERE user_id = ? ORDER BY id DESC`,
+		userID,
 	)
 	if err != nil {
 		return nil, err
@@ -257,8 +294,8 @@ func (s *Store) ListGenerations() ([]GenerationMeta, error) {
 	return out, nil
 }
 
-func (s *Store) GetGenerationPDF(id string) (pdf []byte, filename string, err error) {
-	err = s.db.QueryRow(`SELECT pdf, filename FROM generations WHERE id = ?`, id).Scan(&pdf, &filename)
+func (s *Store) GetGenerationPDF(userID int64, id string) (pdf []byte, filename string, err error) {
+	err = s.db.QueryRow(`SELECT pdf, filename FROM generations WHERE id = ? AND user_id = ?`, id, userID).Scan(&pdf, &filename)
 	if err == sql.ErrNoRows {
 		return nil, "", nil
 	}
@@ -270,11 +307,11 @@ func (s *Store) GetGenerationPDF(id string) (pdf []byte, filename string, err er
 
 // GetGenerationCoverPDF returns the cover letter PDF for id, or (nil, "",
 // nil) when the generation has no cover letter (including when id itself
-// doesn't exist).
-func (s *Store) GetGenerationCoverPDF(id string) (pdf []byte, filename string, err error) {
+// doesn't exist, or belongs to a different user).
+func (s *Store) GetGenerationCoverPDF(userID int64, id string) (pdf []byte, filename string, err error) {
 	var coverPDF []byte
 	var coverFilename sql.NullString
-	err = s.db.QueryRow(`SELECT cover_pdf, cover_filename FROM generations WHERE id = ?`, id).Scan(&coverPDF, &coverFilename)
+	err = s.db.QueryRow(`SELECT cover_pdf, cover_filename FROM generations WHERE id = ? AND user_id = ?`, id, userID).Scan(&coverPDF, &coverFilename)
 	if err == sql.ErrNoRows {
 		return nil, "", nil
 	}
@@ -303,8 +340,8 @@ func normalizeRequirement(s string) string {
 // as a gap at least twice (a single occurrence is noise, not a trend),
 // sorted by Count descending then Requirement ascending. Requirement and
 // LastEvidence are taken from the most recent generation in each group.
-func (s *Store) GapSummary() ([]GapTrend, int, error) {
-	rows, err := s.db.Query(`SELECT tailored_json FROM generations ORDER BY id ASC`)
+func (s *Store) GapSummary(userID int64) ([]GapTrend, int, error) {
+	rows, err := s.db.Query(`SELECT tailored_json FROM generations WHERE user_id = ? ORDER BY id ASC`, userID)
 	if err != nil {
 		return nil, 0, err
 	}

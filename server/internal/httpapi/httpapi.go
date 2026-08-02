@@ -78,7 +78,11 @@ func errJSON(c echo.Context, status int, msg string) error {
 }
 
 func (s *Server) getProfile(c echo.Context) error {
-	p, err := s.Store.LoadProfile()
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	p, err := s.Store.LoadProfile(userID)
 	if err != nil {
 		slog.Error("load profile failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
@@ -90,6 +94,10 @@ func (s *Server) getProfile(c echo.Context) error {
 }
 
 func (s *Server) postProfile(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
 	fh, err := c.FormFile("file")
 	if err != nil {
 		return errJSON(c, http.StatusBadRequest, "missing or invalid file")
@@ -117,7 +125,7 @@ func (s *Server) postProfile(c echo.Context) error {
 		slog.Error("digitize failed", "err", err)
 		return errJSON(c, http.StatusBadGateway, err.Error())
 	}
-	if err := s.Store.SaveProfile(p); err != nil {
+	if err := s.Store.SaveProfile(userID, p); err != nil {
 		slog.Error("save profile failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
@@ -134,6 +142,10 @@ type extendRequest struct {
 // reported the same way as an LLM failure (502 + "profile extend failed")
 // since both represent the LLM producing something we can't safely apply.
 func (s *Server) postProfileExtend(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
 	var req extendRequest
 	if err := c.Bind(&req); err != nil {
 		return errJSON(c, http.StatusBadRequest, "invalid request body")
@@ -142,7 +154,7 @@ func (s *Server) postProfileExtend(c echo.Context) error {
 		return errJSON(c, http.StatusBadRequest, "note is required")
 	}
 
-	p, err := s.Store.LoadProfile()
+	p, err := s.Store.LoadProfile(userID)
 	if err != nil {
 		slog.Error("load profile failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
@@ -160,7 +172,7 @@ func (s *Server) postProfileExtend(c echo.Context) error {
 		slog.Error("profile extend failed", "err", err)
 		return errJSON(c, http.StatusBadGateway, err.Error())
 	}
-	if err := s.Store.SaveProfile(*p); err != nil {
+	if err := s.Store.SaveProfile(userID, *p); err != nil {
 		slog.Error("save profile failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
@@ -184,6 +196,10 @@ type generateResponse struct {
 }
 
 func (s *Server) postGenerate(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
 	var req generateRequest
 	if err := c.Bind(&req); err != nil {
 		return errJSON(c, http.StatusBadRequest, "invalid request body")
@@ -202,7 +218,7 @@ func (s *Server) postGenerate(c echo.Context) error {
 		req.RoleInput = text
 	}
 
-	p, err := s.Store.LoadProfile()
+	p, err := s.Store.LoadProfile(userID)
 	if err != nil {
 		slog.Error("load profile failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
@@ -241,7 +257,7 @@ func (s *Server) postGenerate(c echo.Context) error {
 		}
 	}
 
-	meta, err := s.Store.SaveGeneration(tailored, pdf, filename, coverPDF, coverFilename)
+	meta, err := s.Store.SaveGeneration(userID, tailored, pdf, filename, coverPDF, coverFilename)
 	if err != nil {
 		slog.Error("save generation failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
@@ -268,7 +284,11 @@ func (s *Server) postGenerate(c echo.Context) error {
 }
 
 func (s *Server) listGenerations(c echo.Context) error {
-	list, err := s.Store.ListGenerations()
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	list, err := s.Store.ListGenerations(userID)
 	if err != nil {
 		slog.Error("list generations failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
@@ -285,7 +305,11 @@ type gapsResponse struct {
 }
 
 func (s *Server) getGaps(c echo.Context) error {
-	trends, total, err := s.Store.GapSummary()
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	trends, total, err := s.Store.GapSummary(userID)
 	if err != nil {
 		slog.Error("gap summary failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
@@ -294,8 +318,12 @@ func (s *Server) getGaps(c echo.Context) error {
 }
 
 func (s *Server) getGenerationPDF(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
 	id := c.Param("id")
-	pdf, filename, err := s.Store.GetGenerationPDF(id)
+	pdf, filename, err := s.Store.GetGenerationPDF(userID, id)
 	if err != nil {
 		slog.Error("get generation pdf failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
@@ -308,8 +336,12 @@ func (s *Server) getGenerationPDF(c echo.Context) error {
 }
 
 func (s *Server) getGenerationCoverPDF(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
 	id := c.Param("id")
-	pdf, filename, err := s.Store.GetGenerationCoverPDF(id)
+	pdf, filename, err := s.Store.GetGenerationCoverPDF(userID, id)
 	if err != nil {
 		slog.Error("get generation cover pdf failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
