@@ -341,23 +341,14 @@
 
 /* -------------------------------------------------------------- sign-in -- */
 
-/* Sign-in is the app's front door, not a form: a centered flat block that
-   owns the whole stage. */
+/* Sign-in is the app's front door, not a form: a flat centered block that
+   sits high in the stage rather than floating mid-void. */
 .signin {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  min-height: 100%;
-  padding: 32px 0;
+  padding: 48px 0 32px;
   text-align: center;
-}
-
-.signin-sub {
-  margin-top: 8px;
-  max-width: 34ch;
-  color: var(--muted);
-  text-wrap: balance;
 }
 
 /* With no provider to offer, the row must not hold space above the notice
