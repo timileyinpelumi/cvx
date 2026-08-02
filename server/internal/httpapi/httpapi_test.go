@@ -105,10 +105,24 @@ func (f fakeLLM) GenerateJSON(_ context.Context, _ string, blocks []ai.ContentBl
 		}
 		return []byte(extendJSON), nil
 	}
+	if isRecruiterEmailSchema(schema) {
+		return []byte(recruiterJSON), nil
+	}
 	if f.tailorOut != "" {
 		return []byte(f.tailorOut), nil
 	}
 	return []byte(tailorJSON), nil
+}
+
+const recruiterJSON = `{"subject":"Application for Python Backend Engineer","paragraphs":["I am applying for the Python Backend Engineer role. I built the engine in Python."],"closing":"Best regards,"}`
+
+func isRecruiterEmailSchema(schema map[string]any) bool {
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return false
+	}
+	_, ok = props["subject"]
+	return ok
 }
 
 func newStore(t *testing.T) *store.Store {
@@ -1106,5 +1120,67 @@ func TestExtendWithContext(t *testing.T) {
 	e.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("extend with context: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestGenerateRecruiterEmail(t *testing.T) {
+	s, e := newTestServer(t)
+	var gotSubject, gotTo string
+	notified := false
+	s.Mail = func(to string, t model.Tailored, pdf []byte, fn string, cp []byte, cf string) (bool, error) {
+		notified = true
+		return true, nil
+	}
+	s.RecruiterMail = func(to, subject string, paragraphs []string, closing string, name string, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error) {
+		gotTo, gotSubject = to, subject
+		return true, nil
+	}
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	body, _ := json.Marshal(generateRequest{RoleInput: "Python Backend Engineer", RecruiterEmail: true})
+	req := httptest.NewRequest(http.MethodPost, "/api/generate", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Emailed        bool `json:"emailed"`
+		RecruiterEmail bool `json:"recruiterEmail"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Emailed || !resp.RecruiterEmail {
+		t.Fatalf("want emailed+recruiterEmail true, got %+v", resp)
+	}
+	if notified {
+		t.Fatal("notification must not send when recruiter email requested")
+	}
+	if gotTo == "" || gotSubject != "Application for Python Backend Engineer" {
+		t.Fatalf("recruiter mail call: to=%q subject=%q", gotTo, gotSubject)
+	}
+}
+
+func TestGenerateWithoutRecruiterFlagUsesNotification(t *testing.T) {
+	s, e := newTestServer(t)
+	notified, recruited := false, false
+	s.Mail = func(to string, t model.Tailored, pdf []byte, fn string, cp []byte, cf string) (bool, error) {
+		notified = true
+		return true, nil
+	}
+	s.RecruiterMail = func(to, subject string, paragraphs []string, closing string, name string, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error) {
+		recruited = true
+		return true, nil
+	}
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBody("Python Backend Engineer"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	if !notified || recruited {
+		t.Fatalf("want notification only: notified=%v recruited=%v", notified, recruited)
 	}
 }

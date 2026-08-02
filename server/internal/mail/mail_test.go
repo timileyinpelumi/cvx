@@ -180,3 +180,46 @@ func TestSend_NonSuccessStatus_ReturnsError(t *testing.T) {
 		t.Fatal("expected sent=false on error")
 	}
 }
+
+func TestSendRecruiter(t *testing.T) {
+	t.Setenv("RESEND_API_KEY", "test-key")
+	var got sendRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-key" {
+			t.Errorf("auth header: %q", r.Header.Get("Authorization"))
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Error(err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ok, err := SendRecruiter("me@example.com", "Application for Backend Engineer",
+		[]string{"I am applying for the Backend Engineer role."}, "Best regards,", "Ada Example",
+		[]byte("pdf"), "resume.pdf", srv.URL,
+		Attachment{Filename: "cover.pdf", Content: []byte("cover")})
+	if err != nil || !ok {
+		t.Fatalf("got %v, %v", ok, err)
+	}
+	if got.Subject != "Application for Backend Engineer" {
+		t.Fatalf("subject %q", got.Subject)
+	}
+	if !strings.Contains(got.HTML, "applying for the Backend Engineer role") || !strings.Contains(got.HTML, "Ada Example") {
+		t.Fatalf("body: %s", got.HTML)
+	}
+	if strings.Contains(got.HTML, "Gaps") || strings.Contains(got.HTML, "What changed") {
+		t.Fatalf("notification content leaked into recruiter email: %s", got.HTML)
+	}
+	if len(got.Attachments) != 2 {
+		t.Fatalf("want 2 attachments, got %d", len(got.Attachments))
+	}
+}
+
+func TestSendRecruiterGate(t *testing.T) {
+	t.Setenv("RESEND_API_KEY", "")
+	ok, err := SendRecruiter("me@example.com", "s", nil, "", "n", nil, "r.pdf", "")
+	if err != nil || ok {
+		t.Fatalf("want false,nil got %v,%v", ok, err)
+	}
+}

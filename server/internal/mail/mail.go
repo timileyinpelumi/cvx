@@ -107,6 +107,78 @@ func Send(to string, t model.Tailored, pdf []byte, filename string, endpoint str
 	return true, nil
 }
 
+// SendRecruiter posts the forwardable recruiter-facing email: just the
+// application note and the attachments, none of the notification content.
+// Same gate and transport as Send.
+func SendRecruiter(to string, subject string, paragraphs []string, closing string, name string, pdf []byte, filename string, endpoint string, extra ...Attachment) (bool, error) {
+	apiKey := os.Getenv("RESEND_API_KEY")
+	if apiKey == "" || to == "" {
+		return false, nil
+	}
+
+	if endpoint == "" {
+		endpoint = defaultEndpoint
+	}
+
+	from := os.Getenv("CVX_EMAIL_FROM")
+	if from == "" {
+		from = defaultFrom
+	}
+
+	attachments := []attachment{
+		{Filename: filename, Content: base64.StdEncoding.EncodeToString(pdf)},
+	}
+	for _, a := range extra {
+		attachments = append(attachments, attachment{Filename: a.Filename, Content: base64.StdEncoding.EncodeToString(a.Content)})
+	}
+
+	var b strings.Builder
+	for _, para := range paragraphs {
+		if para == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "<p>%s</p>", html.EscapeString(para))
+	}
+	if closing == "" {
+		closing = "Best regards,"
+	}
+	fmt.Fprintf(&b, "<p>%s<br>%s</p>", html.EscapeString(closing), html.EscapeString(name))
+
+	reqBody := sendRequest{
+		From:        from,
+		To:          to,
+		Subject:     subject,
+		HTML:        b.String(),
+		Attachments: attachments,
+	}
+
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return false, fmt.Errorf("mail: marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return false, fmt.Errorf("mail: build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: requestTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("mail: send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return false, fmt.Errorf("mail: resend returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return true, nil
+}
+
 func renderHTML(t model.Tailored) string {
 	var b strings.Builder
 

@@ -124,6 +124,12 @@ func main() {
 			}
 			return mail.Send(to, t, pdf, filename, "")
 		},
+		RecruiterMail: func(to, subject string, paragraphs []string, closing string, name string, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error) {
+			if coverPDF != nil {
+				return mail.SendRecruiter(to, subject, paragraphs, closing, name, pdf, filename, "", mail.Attachment{Filename: coverFilename, Content: coverPDF})
+			}
+			return mail.SendRecruiter(to, subject, paragraphs, closing, name, pdf, filename, "")
+		},
 		Auth: authGate,
 	}
 

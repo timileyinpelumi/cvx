@@ -35,7 +35,10 @@ type Server struct {
 	Store *store.Store
 	LLM   ai.LLM
 	Mail  func(to string, t model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error)
-	Auth  *auth.Auth
+	// RecruiterMail sends the forwardable recruiter-facing email instead of
+	// the private notification when a generation requests it.
+	RecruiterMail func(to, subject string, paragraphs []string, closing string, name string, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error)
+	Auth          *auth.Auth
 }
 
 func (s *Server) Register(e *echo.Echo) {
@@ -187,8 +190,9 @@ func (s *Server) postProfileExtend(c echo.Context) error {
 }
 
 type generateRequest struct {
-	RoleInput   string `json:"roleInput"`
-	CoverLetter bool   `json:"coverLetter"`
+	RoleInput      string `json:"roleInput"`
+	CoverLetter    bool   `json:"coverLetter"`
+	RecruiterEmail bool   `json:"recruiterEmail"`
 }
 
 type generateResponse struct {
@@ -197,8 +201,9 @@ type generateResponse struct {
 	Gaps          []model.Gap `json:"gaps"`
 	WhatChanged   []string    `json:"whatChanged"`
 	Emailed       bool        `json:"emailed"`
-	CoverFilename string      `json:"coverFilename"`
-	CoverLetter   bool        `json:"coverLetter"`
+	CoverFilename  string     `json:"coverFilename"`
+	CoverLetter    bool       `json:"coverLetter"`
+	RecruiterEmail bool       `json:"recruiterEmail"`
 }
 
 func (s *Server) postGenerate(c echo.Context) error {
@@ -271,27 +276,48 @@ func (s *Server) postGenerate(c echo.Context) error {
 	}
 
 	emailed := false
-	if s.Mail != nil {
+	recruiterSent := false
+	if s.Mail != nil || s.RecruiterMail != nil {
 		u, err := s.Store.GetUser(userID)
 		if err != nil {
 			slog.Warn("email recipient lookup failed", "err", err)
 		} else if u != nil && u.Email != "" {
-			ok, err := s.Mail(u.Email, tailored, pdf, filename, coverPDF, coverFilename)
-			if err != nil {
-				slog.Warn("email send failed", "err", err)
+			if req.RecruiterEmail {
+				if s.RecruiterMail != nil {
+					// The user asked for the forwardable artifact: a failed
+					// generation sends nothing rather than falling back to
+					// the private notification.
+					re, err := ai.RecruiterEmail(ctx, s.LLM, *p, req.RoleInput)
+					if err != nil {
+						slog.Error("recruiter email failed", "err", err)
+					} else {
+						ok, err := s.RecruiterMail(u.Email, re.Subject, re.Paragraphs, re.Closing, p.Name, pdf, filename, coverPDF, coverFilename)
+						if err != nil {
+							slog.Warn("email send failed", "err", err)
+						}
+						emailed = ok
+						recruiterSent = ok
+					}
+				}
+			} else if s.Mail != nil {
+				ok, err := s.Mail(u.Email, tailored, pdf, filename, coverPDF, coverFilename)
+				if err != nil {
+					slog.Warn("email send failed", "err", err)
+				}
+				emailed = ok
 			}
-			emailed = ok
 		}
 	}
 
 	return c.JSON(http.StatusOK, generateResponse{
-		ID:            meta.ID,
-		Filename:      meta.Filename,
-		Gaps:          model.NonNil(tailored.Gaps),
-		WhatChanged:   model.NonNil(tailored.WhatChanged),
-		Emailed:       emailed,
-		CoverFilename: coverFilename,
-		CoverLetter:   coverFilename != "",
+		ID:             meta.ID,
+		Filename:       meta.Filename,
+		Gaps:           model.NonNil(tailored.Gaps),
+		WhatChanged:    model.NonNil(tailored.WhatChanged),
+		Emailed:        emailed,
+		CoverFilename:  coverFilename,
+		CoverLetter:    coverFilename != "",
+		RecruiterEmail: recruiterSent,
 	})
 }
 
