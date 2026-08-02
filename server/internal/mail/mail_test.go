@@ -24,14 +24,13 @@ func fixture() model.Tailored {
 
 func TestSend_EnvUnset_NoRequest(t *testing.T) {
 	t.Setenv("RESEND_API_KEY", "")
-	t.Setenv("CVX_EMAIL_TO", "")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("unexpected request when env is unset")
 	}))
 	defer srv.Close()
 
-	sent, err := Send(fixture(), []byte("%PDF-1.4 fake"), "resume.pdf", srv.URL)
+	sent, err := Send("candidate@example.com", fixture(), []byte("%PDF-1.4 fake"), "resume.pdf", srv.URL)
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
@@ -42,7 +41,6 @@ func TestSend_EnvUnset_NoRequest(t *testing.T) {
 
 func TestSend_Configured_PostsExpectedPayload(t *testing.T) {
 	t.Setenv("RESEND_API_KEY", "test-key-123")
-	t.Setenv("CVX_EMAIL_TO", "candidate@example.com")
 
 	pdf := []byte("%PDF-1.4 fake pdf bytes")
 
@@ -61,7 +59,7 @@ func TestSend_Configured_PostsExpectedPayload(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	sent, err := Send(fixture(), pdf, "resume.pdf", srv.URL)
+	sent, err := Send("candidate@example.com", fixture(), pdf, "resume.pdf", srv.URL)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -118,7 +116,6 @@ func TestSend_Configured_PostsExpectedPayload(t *testing.T) {
 
 func TestSend_WithCoverLetter_IncludesBothAttachments(t *testing.T) {
 	t.Setenv("RESEND_API_KEY", "test-key-123")
-	t.Setenv("CVX_EMAIL_TO", "candidate@example.com")
 
 	pdf := []byte("%PDF-1.4 resume")
 	cover := []byte("%PDF-1.4 cover letter")
@@ -134,7 +131,7 @@ func TestSend_WithCoverLetter_IncludesBothAttachments(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	sent, err := Send(fixture(), pdf, "resume.pdf", srv.URL, Attachment{Filename: "cover.pdf", Content: cover})
+	sent, err := Send("candidate@example.com", fixture(), pdf, "resume.pdf", srv.URL, Attachment{Filename: "cover.pdf", Content: cover})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -168,7 +165,6 @@ func TestSend_WithCoverLetter_IncludesBothAttachments(t *testing.T) {
 
 func TestSend_NonSuccessStatus_ReturnsError(t *testing.T) {
 	t.Setenv("RESEND_API_KEY", "test-key-123")
-	t.Setenv("CVX_EMAIL_TO", "candidate@example.com")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
@@ -176,7 +172,7 @@ func TestSend_NonSuccessStatus_ReturnsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	sent, err := Send(fixture(), []byte("%PDF-1.4 fake"), "resume.pdf", srv.URL)
+	sent, err := Send("candidate@example.com", fixture(), []byte("%PDF-1.4 fake"), "resume.pdf", srv.URL)
 	if err == nil {
 		t.Fatal("expected error for non-2xx response")
 	}

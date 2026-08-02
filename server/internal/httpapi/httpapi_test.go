@@ -151,7 +151,7 @@ func newTestServerAs(t *testing.T, st *store.Store, email string) (*Server, *ech
 	s := &Server{
 		Store: st,
 		LLM:   fakeLLM{},
-		Mail:  func(model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Mail:  func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
 		Auth:  &auth.Auth{Store: st, DevUserEmail: email},
 	}
 	e := echo.New()
@@ -165,7 +165,7 @@ func newTestServerWithLLM(t *testing.T, llm ai.LLM) (*Server, *echo.Echo) {
 	s := &Server{
 		Store: st,
 		LLM:   llm,
-		Mail:  func(model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Mail:  func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
 		Auth:  devAuth(st),
 	}
 	e := echo.New()
@@ -227,7 +227,7 @@ func TestLogoutUnguardedEvenWithoutValidSession(t *testing.T) {
 	s := &Server{
 		Store: st,
 		LLM:   fakeLLM{},
-		Mail:  func(model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Mail:  func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
 		Auth:  &auth.Auth{Store: st, SessionSecret: "test-session-secret-at-least-32-chars-long"}, // OAuth mode, no cookie
 	}
 	e := echo.New()
@@ -378,7 +378,7 @@ func TestGenerateHappyPathAndPDF(t *testing.T) {
 
 func TestGenerateEmailFailureDoesNotFailRequest(t *testing.T) {
 	s, e := newTestServer(t)
-	s.Mail = func(model.Tailored, []byte, string, []byte, string) (bool, error) {
+	s.Mail = func(string, model.Tailored, []byte, string, []byte, string) (bool, error) {
 		return false, fmt.Errorf("boom")
 	}
 	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
@@ -524,7 +524,7 @@ func TestGenerationsListNilSlicesSerializeAsEmptyArrays(t *testing.T) {
 	s := &Server{
 		Store: st,
 		LLM:   fakeLLM{},
-		Mail:  func(model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Mail:  func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
 		Auth:  devAuth(st),
 	}
 	e := echo.New()
@@ -554,7 +554,7 @@ func TestGapsEndpointShape(t *testing.T) {
 	s := &Server{
 		Store: st,
 		LLM:   fakeLLM{},
-		Mail:  func(model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Mail:  func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
 		Auth:  devAuth(st),
 	}
 	e := echo.New()
@@ -825,9 +825,9 @@ func TestGenerateCoverLetterFailureDoesNotFailGenerate(t *testing.T) {
 func TestGenerateEmailsBothPDFsWhenCoverExists(t *testing.T) {
 	s, e := newTestServer(t)
 	var gotPDF, gotCoverPDF []byte
-	var gotFilename, gotCoverFilename string
-	s.Mail = func(_ model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error) {
-		gotPDF, gotFilename, gotCoverPDF, gotCoverFilename = pdf, filename, coverPDF, coverFilename
+	var gotTo, gotFilename, gotCoverFilename string
+	s.Mail = func(to string, _ model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error) {
+		gotTo, gotPDF, gotFilename, gotCoverPDF, gotCoverFilename = to, pdf, filename, coverPDF, coverFilename
 		return true, nil
 	}
 	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
@@ -842,6 +842,9 @@ func TestGenerateEmailsBothPDFsWhenCoverExists(t *testing.T) {
 	}
 	if len(gotCoverPDF) == 0 || gotCoverFilename == "" {
 		t.Fatalf("want cover pdf/filename passed to Mail, got %d bytes, filename %q", len(gotCoverPDF), gotCoverFilename)
+	}
+	if gotTo != "dev@test.local" {
+		t.Fatalf("want recipient dev@test.local (the signed-in user's email), got %q", gotTo)
 	}
 }
 
@@ -958,7 +961,7 @@ func TestHandlersGuardMissingUserIDContext(t *testing.T) {
 	s := &Server{
 		Store: st,
 		LLM:   fakeLLM{},
-		Mail:  func(model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Mail:  func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
 		Auth:  devAuth(st),
 	}
 	e := echo.New()

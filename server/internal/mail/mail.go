@@ -1,5 +1,6 @@
 // Package mail sends the tailored resume PDF via the Resend API. It is
-// env-gated: absent RESEND_API_KEY or CVX_EMAIL_TO, Send is a no-op.
+// gated on RESEND_API_KEY and a non-empty recipient (the signed-in user's
+// email); absent either, Send is a no-op.
 package mail
 
 import (
@@ -44,13 +45,13 @@ type Attachment struct {
 }
 
 // Send posts the tailored resume PDF to Resend as an email attachment, plus
-// any extra attachments (e.g. a cover letter PDF). It returns (false, nil)
-// without making a network call when RESEND_API_KEY or CVX_EMAIL_TO is unset
-// or empty. endpoint == "" defaults to the Resend emails endpoint; a
-// non-empty value is used as-is (for tests).
-func Send(t model.Tailored, pdf []byte, filename string, endpoint string, extra ...Attachment) (bool, error) {
+// any extra attachments (e.g. a cover letter PDF), addressed to the given
+// recipient (the signed-in user's email). It returns (false, nil) without
+// making a network call when RESEND_API_KEY is unset or the recipient is
+// empty. endpoint == "" defaults to the Resend emails endpoint; a non-empty
+// value is used as-is (for tests).
+func Send(to string, t model.Tailored, pdf []byte, filename string, endpoint string, extra ...Attachment) (bool, error) {
 	apiKey := os.Getenv("RESEND_API_KEY")
-	to := os.Getenv("CVX_EMAIL_TO")
 	if apiKey == "" || to == "" {
 		return false, nil
 	}

@@ -33,7 +33,7 @@ const maxUploadBytes = 15 << 20 // 15MB
 type Server struct {
 	Store *store.Store
 	LLM   ai.LLM
-	Mail  func(t model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error)
+	Mail  func(to string, t model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error)
 	Auth  *auth.Auth
 }
 
@@ -265,11 +265,16 @@ func (s *Server) postGenerate(c echo.Context) error {
 
 	emailed := false
 	if s.Mail != nil {
-		ok, err := s.Mail(tailored, pdf, filename, coverPDF, coverFilename)
+		u, err := s.Store.GetUser(userID)
 		if err != nil {
-			slog.Warn("email send failed", "err", err)
+			slog.Warn("email recipient lookup failed", "err", err)
+		} else if u != nil && u.Email != "" {
+			ok, err := s.Mail(u.Email, tailored, pdf, filename, coverPDF, coverFilename)
+			if err != nil {
+				slog.Warn("email send failed", "err", err)
+			}
+			emailed = ok
 		}
-		emailed = ok
 	}
 
 	return c.JSON(http.StatusOK, generateResponse{
