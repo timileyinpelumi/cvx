@@ -4,21 +4,24 @@
 /* ---------------------------------------------------------------- shell -- */
 
 .shell {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   max-width: 660px;
+  height: 100dvh;
   margin: 0 auto;
-  padding: 48px 16px 64px;
+  padding: 24px 16px 0;
 }
 
 @media (min-width: 481px) {
   .shell {
-    padding: 56px 20px 80px;
+    padding: 32px 20px 0;
   }
 }
 
 @media (min-width: 768px) {
   .shell {
-    padding: 72px 24px 96px;
+    padding: 40px 24px 0;
   }
 }
 
@@ -147,9 +150,16 @@
   text-wrap: balance;
 }
 
-/* The state area holds either the uploader or the tailor composer, never both,
-   so its height is entirely the child's. */
-.stage,
+/* The stage is the app's only scroll container: the masthead stays pinned
+   and the document itself never scrolls. */
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 64px;
+}
+
 .tailor {
   display: flow-root;
 }

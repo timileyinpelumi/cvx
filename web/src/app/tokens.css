@@ -23,7 +23,13 @@
     monospace;
 }
 
+html {
+  height: 100%;
+}
+
 body {
+  height: 100%;
+  overflow: hidden;
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-body);
