@@ -60,15 +60,49 @@ func sampleFixturesForAggregate() []FixtureResult {
 				Factuality:  RubricScore{Score: 10},
 			},
 		},
+		{
+			// A harness/infra failure (e.g. the LLM call itself errored) —
+			// distinct from f2's true guardrail violation. No checks ran,
+			// so it must contribute nothing to DeterministicPassRate, and
+			// must be counted separately from GuardrailFailedFixtures.
+			ID:              "f4",
+			GenerationError: true,
+			Error:           "tailor: request timed out",
+		},
 	}
 }
 
 func TestAggregateDeterministicPassRate(t *testing.T) {
 	agg := aggregate(sampleFixturesForAggregate())
-	// checks: f1 has 3 (2 pass), f2 has 1 (0 pass), f3 has 4 (4 pass) => 6/8
+	// checks: f1 has 3 (2 pass), f2 has 1 (0 pass), f3 has 4 (4 pass),
+	// f4 (GenerationError) contributes 0 checks => 6/8, f4 excluded entirely.
 	want := 6.0 / 8.0
 	if !almostEqual(agg.DeterministicPassRate, want) {
 		t.Fatalf("want pass rate %v, got %v", want, agg.DeterministicPassRate)
+	}
+}
+
+func TestAggregateFixtureCounts(t *testing.T) {
+	agg := aggregate(sampleFixturesForAggregate())
+	// f1 scored, f2 guardrail-failed, f3 scored (+cover), f4 errored (infra).
+	if agg.TotalFixtures != 4 {
+		t.Errorf("want TotalFixtures=4, got %d", agg.TotalFixtures)
+	}
+	if agg.ErroredFixtures != 1 {
+		t.Errorf("want ErroredFixtures=1, got %d", agg.ErroredFixtures)
+	}
+	if agg.GuardrailFailedFixtures != 1 {
+		t.Errorf("want GuardrailFailedFixtures=1, got %d", agg.GuardrailFailedFixtures)
+	}
+
+	wantScored := map[string]int{
+		"selection": 2, "vocabulary": 2, "bulletStrength": 2, "honesty": 2, "gapQuality": 2, "headlineSummary": 2,
+		"specificity": 1, "voice": 1, "factuality": 1,
+	}
+	for dim, want := range wantScored {
+		if got := agg.ScoredFixtures[dim]; got != want {
+			t.Errorf("ScoredFixtures[%s]: want %d, got %d", dim, want, got)
+		}
 	}
 }
 
@@ -118,6 +152,9 @@ func TestAggregateEmpty(t *testing.T) {
 	if len(agg.MeanByDimension) != 0 {
 		t.Fatalf("want empty MeanByDimension, got %+v", agg.MeanByDimension)
 	}
+	if agg.TotalFixtures != 0 || agg.ErroredFixtures != 0 || agg.GuardrailFailedFixtures != 0 {
+		t.Fatalf("want zero fixture counts, got %+v", agg)
+	}
 }
 
 func sampleReport() Report {
@@ -137,10 +174,48 @@ func TestRenderIncludesKeyInformation(t *testing.T) {
 	}
 	out := buf.String()
 
-	for _, want := range []string{"test-run", "f1", "f2", "f3", "deterministic pass rate", "overall mean", "fabricated id"} {
+	for _, want := range []string{
+		"test-run", "f1", "f2", "f3", "f4",
+		"deterministic pass rate", "overall mean", "fabricated id", "tailor: request timed out",
+		"scored 2 of 4 fixtures (1 errored, 1 guardrail-failed)",
+		"guardrail_fail", "error", "ok",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("rendered output missing %q\n---\n%s", want, out)
 		}
+	}
+}
+
+func TestRenderDistinguishesGenerationErrorFromGuardrailFail(t *testing.T) {
+	var buf bytes.Buffer
+	r := Report{
+		Label:       "l",
+		GeneratedAt: time.Now().UTC(),
+		Fixtures: []FixtureResult{
+			{ID: "guardrail-fixture", Checks: []Check{{Name: "guardrail", Pass: false, Detail: "bad id"}}, Error: "bad id"},
+			{ID: "infra-fixture", GenerationError: true, Error: "tailor: connection refused"},
+		},
+	}
+	r.Aggregate = aggregate(r.Fixtures)
+	if err := r.Render(&buf); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	lineFor := func(id string) string {
+		for _, line := range strings.Split(buf.String(), "\n") {
+			if strings.HasPrefix(line, id) {
+				return line
+			}
+		}
+		t.Fatalf("no row found for %s\n---\n%s", id, buf.String())
+		return ""
+	}
+
+	if line := lineFor("guardrail-fixture"); !strings.Contains(line, "guardrail_fail") {
+		t.Errorf("want guardrail-fixture row status guardrail_fail, got: %s", line)
+	}
+	if line := lineFor("infra-fixture"); !strings.Contains(line, "error") || strings.Contains(line, "guardrail_fail") {
+		t.Errorf("want infra-fixture row status error (not guardrail_fail), got: %s", line)
 	}
 }
 

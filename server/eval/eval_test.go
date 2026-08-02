@@ -30,6 +30,15 @@ func (q *queueLLM) GenerateJSON(_ context.Context, _ string, _ []ai.ContentBlock
 
 var errQueueExhausted = errors.New("queueLLM: no more canned outputs")
 
+// erroringLLM is a fake ai.LLM whose GenerateJSON always fails — it stands
+// in for a real infra failure (network, provider outage, ...), as opposed
+// to a model that responded but cited a fabricated id.
+type erroringLLM struct{ err error }
+
+func (e *erroringLLM) GenerateJSON(_ context.Context, _ string, _ []ai.ContentBlock, _ map[string]any) ([]byte, error) {
+	return nil, e.err
+}
+
 func validTailoredJSON(nItems int) string {
 	// The fixture profile (server/eval/fixtures/profile.json) has 6 items,
 	// item-0..item-5, each with at least 3 bullets (item-N-b-0, -b-1 always
@@ -152,6 +161,39 @@ func TestRunGuardrailFailureSkipsJudge(t *testing.T) {
 	}
 }
 
+func TestRunGenerationErrorIsNotGuardrail(t *testing.T) {
+	gen := &erroringLLM{err: errors.New("network unreachable")}
+	judge := &queueLLM{outs: []string{validResumeRubricJSON}} // must never be consumed
+
+	report, err := Run(context.Background(), gen, judge, "fixtures", []string{"backend-go"}, false)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	fr := report.Fixtures[0]
+
+	if !fr.GenerationError {
+		t.Fatalf("want GenerationError=true for an infra failure, got %+v", fr)
+	}
+	if len(fr.Checks) != 0 {
+		t.Fatalf("want no deterministic checks recorded for a generation error (excluded from pass rate), got %+v", fr.Checks)
+	}
+	if fr.Error == "" || !strings.Contains(fr.Error, "network unreachable") {
+		t.Fatalf("want error detail naming the underlying failure, got %q", fr.Error)
+	}
+	for _, c := range fr.Checks {
+		if c.Name == "guardrail" {
+			t.Fatalf("want no guardrail check for an infra failure, got %+v", c)
+		}
+	}
+	if judge.i != 0 {
+		t.Fatalf("want judge never called, got %d calls", judge.i)
+	}
+
+	if agg := report.Aggregate; agg.ErroredFixtures != 1 || agg.GuardrailFailedFixtures != 0 {
+		t.Fatalf("want ErroredFixtures=1, GuardrailFailedFixtures=0, got %+v", agg)
+	}
+}
+
 func TestRunWithCoverLetters(t *testing.T) {
 	gen := &queueLLM{outs: []string{validTailoredJSON(2), validCoverLetterJSON}}
 	judge := &queueLLM{outs: []string{validResumeRubricJSON, validCoverRubricJSON}}
@@ -166,6 +208,18 @@ func TestRunWithCoverLetters(t *testing.T) {
 	}
 	if fr.Cover.Specificity.Score != 7 || fr.Cover.Voice.Score != 8 || fr.Cover.Factuality.Score != 9 {
 		t.Fatalf("unexpected cover rubric: %+v", fr.Cover)
+	}
+}
+
+func TestIsGuardrailError(t *testing.T) {
+	guardrail := errors.New("tailored output references unknown profile item: item-99")
+	if !isGuardrailError(guardrail) {
+		t.Errorf("want unwrapped ValidateTailored error classified as guardrail")
+	}
+
+	infra := errors.New("tailor: request timed out")
+	if isGuardrailError(infra) {
+		t.Errorf("want \"tailor: \"-prefixed error classified as infra, not guardrail")
 	}
 }
 

@@ -167,6 +167,24 @@ func selectedSkillsCheck(p model.Profile, t model.Tailored) Check {
 	return Check{Name: "selectedSkillsSubset", Pass: false, Detail: "not in profile: " + strings.Join(bad, ", ")}
 }
 
+// tailorErrorPrefix is the wrapping ai.Tailor's tailor.go applies to every
+// error EXCEPT the one from model.ValidateTailored: marshal-profile,
+// LLM-call, and unmarshal-response failures are all `fmt.Errorf("tailor:
+// ...", err)`, while the guardrail's own error is returned unwrapped. That
+// asymmetry is intentional upstream (it's how tailor.go's own callers were
+// already written) and is the only signal eval.Run has to tell "the
+// generator/network/provider misbehaved" apart from "the model actually
+// violated the citation guardrail" without ai.Tailor exposing a typed error.
+const tailorErrorPrefix = "tailor: "
+
+// isGuardrailError reports whether err came from model.ValidateTailored
+// (a true guardrail violation: the model cited a fabricated id) as opposed
+// to an infra/generation failure inside ai.Tailor (LLM call, marshaling, or
+// response parsing) — see tailorErrorPrefix.
+func isGuardrailError(err error) bool {
+	return !strings.HasPrefix(err.Error(), tailorErrorPrefix)
+}
+
 // Run executes the eval harness for the selected fixtures against gen (the
 // generator under test) and judge (the rubric scorer, normally a different
 // model so it never grades itself). Fixtures run strictly sequentially, in
@@ -178,9 +196,19 @@ func selectedSkillsCheck(p model.Profile, t model.Tailored) Check {
 // check) → the rest of the deterministic checks → one judge call for the
 // resume rubric → optionally a cover letter + its own judge call.
 //
-// A guardrail (or other Tailor) failure aborts just that fixture: it's
-// recorded with a single failing "guardrail" check and no judge call, since
-// there is nothing valid left to score.
+// A Tailor failure aborts just that fixture, and the two failure modes are
+// recorded differently (see Aggregate's doc comment on why this distinction
+// matters for comparing runs):
+//   - A true guardrail violation (isGuardrailError) is a real deterministic
+//     check result: FixtureResult.Checks gets a single failing "guardrail"
+//     entry, which DOES count toward DeterministicPassRate.
+//   - Any other Tailor failure (LLM call, marshal, or unmarshal) is a
+//     harness/infra error, not a judgment about the generator's output:
+//     FixtureResult.GenerationError is set instead, Checks stays empty, and
+//     it is excluded from DeterministicPassRate entirely.
+//
+// Either way there is nothing valid to run the remaining checks or the
+// judge against, so the fixture is skipped past that point.
 func Run(ctx context.Context, gen ai.LLM, judge ai.LLM, fixturesDir string, ids []string, coverLetters bool) (Report, error) {
 	entries, err := loadFixtureIndex(fixturesDir)
 	if err != nil {
@@ -208,7 +236,11 @@ func Run(ctx context.Context, gen ai.LLM, judge ai.LLM, fixturesDir string, ids 
 
 		tailored, err := ai.Tailor(ctx, gen, profile, jdText)
 		if err != nil {
-			fr.Checks = []Check{{Name: "guardrail", Pass: false, Detail: err.Error()}}
+			if isGuardrailError(err) {
+				fr.Checks = []Check{{Name: "guardrail", Pass: false, Detail: err.Error()}}
+			} else {
+				fr.GenerationError = true
+			}
 			fr.Error = err.Error()
 			report.Fixtures = append(report.Fixtures, fr)
 			continue

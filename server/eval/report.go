@@ -49,28 +49,77 @@ type CoverRubric struct {
 // when the corresponding judge call never ran (e.g. Error set because
 // ai.Tailor itself failed, so there was nothing valid to judge).
 type FixtureResult struct {
-	ID         string        `json:"id"`
-	Title      string        `json:"title"`
-	Checks     []Check       `json:"checks"`
-	Error      string        `json:"error,omitempty"`
-	Resume     *ResumeRubric `json:"resume,omitempty"`
-	Cover      *CoverRubric  `json:"cover,omitempty"`
-	CoverError string        `json:"coverError,omitempty"`
+	ID     string  `json:"id"`
+	Title  string  `json:"title"`
+	Checks []Check `json:"checks"`
+	Error  string  `json:"error,omitempty"`
+	// GenerationError is true when ai.Tailor failed for a harness/infra
+	// reason (LLM call, marshal, or unmarshal — see eval.go's
+	// isGuardrailError) rather than a true guardrail violation. Checks stays
+	// empty in this case: there is no deterministic-check verdict to report,
+	// and this fixture is excluded from DeterministicPassRate entirely (as
+	// opposed to a guardrail violation, which IS a real failing check).
+	GenerationError bool          `json:"generationError,omitempty"`
+	Resume          *ResumeRubric `json:"resume,omitempty"`
+	Cover           *CoverRubric  `json:"cover,omitempty"`
+	CoverError      string        `json:"coverError,omitempty"`
+}
+
+// hasFailingGuardrailCheck reports whether f's deterministic checks include
+// a failed "guardrail" entry (a true citation-guardrail violation, as
+// opposed to a GenerationError harness failure or a clean pass).
+func (f FixtureResult) hasFailingGuardrailCheck() bool {
+	for _, c := range f.Checks {
+		if c.Name == "guardrail" && !c.Pass {
+			return true
+		}
+	}
+	return false
 }
 
 // Aggregate summarizes a Report's fixtures into run-level numbers.
+//
+// IMPORTANT for comparing two runs: OverallMean and MeanByDimension are only
+// computed over fixtures that were actually scored (ScoredFixtures) — a
+// fixture that errored out of generation, or that failed the citation
+// guardrail, never reaches the judge and silently drops out of those means.
+// A higher OverallMean on a run with fewer ScoredFixtures/TotalFixtures than
+// its baseline is NOT an improvement; it may just mean more fixtures failed
+// and the survivors were easier to score well. Always read OverallMean
+// alongside DeterministicPassRate, TotalFixtures, ErroredFixtures, and
+// GuardrailFailedFixtures together, never OverallMean alone.
 type Aggregate struct {
 	// MeanByDimension is the mean judge score per rubric dimension name
 	// (e.g. "selection", "specificity"), averaged only over fixtures where
 	// that dimension was actually scored.
 	MeanByDimension map[string]float64 `json:"meanByDimension"`
+	// ScoredFixtures is, per rubric dimension, how many fixtures
+	// contributed a score to that dimension's MeanByDimension entry. Resume
+	// dimensions are always scored together (one judge call), and cover
+	// dimensions (only present with -cover) are always scored together (a
+	// second judge call) — but the two counts can differ from each other,
+	// and both can be less than TotalFixtures, hence a per-dimension map
+	// rather than one number.
+	ScoredFixtures map[string]int `json:"scoredFixtures"`
 	// OverallMean is the unweighted mean of MeanByDimension's values, so a
 	// -cover run's 3 extra cover dimensions don't dilute the 6 resume
 	// dimensions just because there are more of them.
 	OverallMean float64 `json:"overallMean"`
 	// DeterministicPassRate is checks passed / checks run, across every
-	// fixture's deterministic Check list.
+	// scored or guardrail-failed fixture's deterministic Check list.
+	// GenerationError fixtures contribute no checks and are excluded.
 	DeterministicPassRate float64 `json:"deterministicPassRate"`
+	// TotalFixtures is len(Report.Fixtures).
+	TotalFixtures int `json:"totalFixtures"`
+	// ErroredFixtures counts fixtures that failed for a harness/infra
+	// reason: ai.Tailor's GenerationError, or a judge call itself failing
+	// after a successful, checked tailor. Distinct from
+	// GuardrailFailedFixtures, which is a real (if unwanted) result.
+	ErroredFixtures int `json:"erroredFixtures"`
+	// GuardrailFailedFixtures counts fixtures where the model's tailored
+	// output cited a fabricated profile id — the citation guardrail itself
+	// (model.ValidateTailored) rejected it.
+	GuardrailFailedFixtures int `json:"guardrailFailedFixtures"`
 }
 
 // Report is one full eval run: a label, every fixture's result, and the
@@ -96,6 +145,7 @@ func aggregate(fixtures []FixtureResult) Aggregate {
 	}
 
 	checksTotal, checksPassed := 0, 0
+	errored, guardrailFailed := 0, 0
 
 	for _, f := range fixtures {
 		for _, c := range f.Checks {
@@ -104,6 +154,19 @@ func aggregate(fixtures []FixtureResult) Aggregate {
 				checksPassed++
 			}
 		}
+
+		switch {
+		case f.GenerationError:
+			errored++
+		case f.hasFailingGuardrailCheck():
+			guardrailFailed++
+		case f.Resume == nil && f.Error != "":
+			// Tailor + its deterministic checks succeeded, but the judge
+			// call itself failed — still a harness error, not a guardrail
+			// violation or a scored result.
+			errored++
+		}
+
 		if f.Resume != nil {
 			addScore("selection", f.Resume.Selection)
 			addScore("vocabulary", f.Resume.Vocabulary)
@@ -138,21 +201,31 @@ func aggregate(fixtures []FixtureResult) Aggregate {
 	}
 
 	return Aggregate{
-		MeanByDimension:       means,
-		OverallMean:           overall,
-		DeterministicPassRate: passRate,
+		MeanByDimension:         means,
+		ScoredFixtures:          counts,
+		OverallMean:             overall,
+		DeterministicPassRate:   passRate,
+		TotalFixtures:           len(fixtures),
+		ErroredFixtures:         errored,
+		GuardrailFailedFixtures: guardrailFailed,
 	}
 }
 
-// Render writes an aligned text table: one row per fixture (deterministic
-// checks passed/total, each rubric dimension score, any error), followed by
-// the aggregate rollup.
+// Render writes an aligned text table: a scored/errored/guardrail-failed
+// summary line, one row per fixture (status, deterministic checks
+// passed/total, each rubric dimension score, any error), and the aggregate
+// rollup.
 func (r Report) Render(w io.Writer) error {
 	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
 
 	fmt.Fprintf(tw, "cvx eval report — label=%s generated=%s\n\n", r.Label, r.GeneratedAt.Format(time.RFC3339))
 
-	header := []string{"ID", "CHECKS"}
+	scored := r.Aggregate.TotalFixtures - r.Aggregate.ErroredFixtures - r.Aggregate.GuardrailFailedFixtures
+	fmt.Fprintf(tw, "scored %d of %d fixtures (%d errored, %d guardrail-failed)\n", scored, r.Aggregate.TotalFixtures, r.Aggregate.ErroredFixtures, r.Aggregate.GuardrailFailedFixtures)
+	fmt.Fprintln(tw, "note: compare pass rates and fixture counts alongside means when judging two runs — a higher mean over fewer scored fixtures is not an improvement")
+	fmt.Fprintln(tw)
+
+	header := []string{"ID", "STATUS", "CHECKS"}
 	for _, d := range resumeDimensionOrder {
 		header = append(header, strings.ToUpper(d))
 	}
@@ -166,7 +239,18 @@ func (r Report) Render(w io.Writer) error {
 				passed++
 			}
 		}
-		row := []string{f.ID, fmt.Sprintf("%d/%d", passed, len(f.Checks))}
+
+		status := "ok"
+		switch {
+		case f.GenerationError:
+			status = "error"
+		case f.hasFailingGuardrailCheck():
+			status = "guardrail_fail"
+		case f.Resume == nil && f.Error != "":
+			status = "error"
+		}
+
+		row := []string{f.ID, status, fmt.Sprintf("%d/%d", passed, len(f.Checks))}
 
 		if f.Resume != nil {
 			scores := map[string]int{
@@ -206,7 +290,7 @@ func (r Report) Render(w io.Writer) error {
 	fmt.Fprintf(tw, "deterministic pass rate\t%.1f%%\n", r.Aggregate.DeterministicPassRate*100)
 	for _, d := range append(append([]string{}, resumeDimensionOrder...), coverDimensionOrder...) {
 		if m, ok := r.Aggregate.MeanByDimension[d]; ok {
-			fmt.Fprintf(tw, "%s\t%.2f\n", d, m)
+			fmt.Fprintf(tw, "%s\t%.2f\t(n=%d)\n", d, m, r.Aggregate.ScoredFixtures[d])
 		}
 	}
 	fmt.Fprintf(tw, "overall mean\t%.2f\n", r.Aggregate.OverallMean)
