@@ -39,7 +39,10 @@ type openAICompat struct {
 	model          string
 	pdfNative      bool
 	maxTokensField string
-	hc             *http.Client
+	// headers are extra request headers (e.g. a User-Agent / client
+	// identifier a router requires); empty for OpenAI and Groq.
+	headers map[string]string
+	hc      *http.Client
 }
 
 func newOpenAICompat(baseURL, apiKey, model string, pdfNative bool, maxTokensField string) *openAICompat {
@@ -51,6 +54,14 @@ func newOpenAICompat(baseURL, apiKey, model string, pdfNative bool, maxTokensFie
 		maxTokensField: maxTokensField,
 		hc:             &http.Client{Timeout: 120 * time.Second},
 	}
+}
+
+// withHeaders returns c configured to send extra request headers on every
+// call, for endpoints that gate on a client identifier the operator tells
+// the user to set.
+func (c *openAICompat) withHeaders(h map[string]string) *openAICompat {
+	c.headers = h
+	return c
 }
 
 type chatMessage struct {
@@ -154,6 +165,9 @@ func (c *openAICompat) GenerateJSON(ctx context.Context, system string, blocks [
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	for k, v := range c.headers {
+		req.Header.Set(k, v)
+	}
 
 	resp, err := c.hc.Do(req)
 	if err != nil {

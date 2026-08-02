@@ -3,7 +3,27 @@ package ai
 import (
 	"fmt"
 	"os"
+	"strings"
 )
+
+// agentRouterHeaders reads the optional client identifier the operator tells
+// you to send. AGENTROUTER_USER_AGENT sets the User-Agent; AGENTROUTER_HEADERS
+// is a comma-separated "Key:Value" list for anything else the operator
+// specifies. Empty when unset — no client identifier is invented here.
+func agentRouterHeaders() map[string]string {
+	h := map[string]string{}
+	if ua := strings.TrimSpace(os.Getenv("AGENTROUTER_USER_AGENT")); ua != "" {
+		h["User-Agent"] = ua
+	}
+	for _, pair := range strings.Split(os.Getenv("AGENTROUTER_HEADERS"), ",") {
+		k, v, ok := strings.Cut(pair, ":")
+		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
+		if ok && k != "" {
+			h[k] = v
+		}
+	}
+	return h
+}
 
 const (
 	groqBaseURL        = "https://api.groq.com/openai/v1"
@@ -73,7 +93,14 @@ func NewFromEnv() (LLM, string, error) {
 		}
 		// Claude-family backends behind OpenAI-compatible routers take the
 		// classic max_tokens field, and PDFs go in as extracted text.
-		return newOpenAICompat(agentRouterBaseURL, key, model, false, maxTokensFieldLegacy), "agentrouter/" + model, nil
+		// AgentRouter gates on a client identifier; set AGENTROUTER_USER_AGENT
+		// (and optionally AGENTROUTER_HEADERS as "K:V,K:V") to the value the
+		// operator gives you.
+		llm := newOpenAICompat(agentRouterBaseURL, key, model, false, maxTokensFieldLegacy)
+		if h := agentRouterHeaders(); len(h) > 0 {
+			llm = llm.withHeaders(h)
+		}
+		return llm, "agentrouter/" + model, nil
 
 	default:
 		return nil, "", fmt.Errorf("unknown CVX_LLM_PROVIDER %q (want groq, openai, anthropic, or agentrouter)", provider)
