@@ -1,17 +1,17 @@
 {
-  "label": "baseline",
-  "generatedAt": "2026-08-02T09:32:38.328523985Z",
+  "label": "rubric2-round2",
+  "generatedAt": "2026-08-02T10:22:13.08388327Z",
   "aggregate": {
     "meanByDimension": {
-      "bulletStrength": 8.333333333333334,
-      "factuality": 8.583333333333334,
-      "gapQuality": 8.25,
-      "headlineSummary": 8.166666666666666,
+      "bulletStrength": 8.75,
+      "factuality": 9.166666666666666,
+      "gapQuality": 9,
+      "headlineSummary": 8.416666666666666,
       "honesty": 9.916666666666666,
-      "selection": 6.416666666666667,
-      "specificity": 7.5,
-      "vocabulary": 6.333333333333333,
-      "voice": 8.75
+      "selection": 7.75,
+      "specificity": 8.166666666666666,
+      "vocabulary": 6.916666666666667,
+      "voice": 8.5
     },
     "scoredFixtures": {
       "bulletStrength": 12,
@@ -24,8 +24,8 @@
       "vocabulary": 12,
       "voice": 12
     },
-    "overallMean": 8.027777777777779,
-    "deterministicPassRate": 0.9761904761904762,
+    "overallMean": 8.50925925925926,
+    "deterministicPassRate": 1,
     "totalFixtures": 12,
     "erroredFixtures": 0,
     "guardrailFailedFixtures": 0

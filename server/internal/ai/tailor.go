@@ -83,7 +83,11 @@ Hard rules:
   bullets, and are the easiest place to over-claim. State only what the
   profile's items actually show: do not claim a domain, specialism, seniority,
   or number of years the profile does not support, and do not assert the
-  role's title when the experience is only adjacent to it. Make them the
+  role's title when the experience is only adjacent to it. Year counts are
+  the most common inflation: a count like "N+ years of X" is allowed only
+  when the profile's dated items IN THAT DISCIPLINE add up to N years —
+  total career years never stand in for discipline years. When the math is
+  not clearly supported, omit the year count entirely. Make them the
   bridge instead — the candidate's real strength, described in the terms this
   role uses, and the concrete transferable evidence for its most central
   requirement. Keep the summary under 60 words.

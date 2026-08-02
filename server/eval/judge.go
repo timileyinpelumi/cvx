@@ -19,21 +19,39 @@ fails badly, 10 = excellent), with one concise one-line rationale per
 dimension:
 
 - selection: did it pick the items and bullets most relevant to this
-  specific role, and leave out weaker or irrelevant ones?
+  specific role, and leave out weaker or irrelevant ones? Score selection
+  RELATIVE TO WHAT THE PROFILE OFFERS: when the profile has little direct
+  experience for the role, a high score means the most transferable items
+  were chosen and the mismatch is disclosed in the gaps; do not deduct for
+  the absence of experience the candidate simply does not have. Deduct for
+  force-fitting irrelevant items or padding when fewer, stronger items were
+  available.
 - vocabulary: does it mirror the job description's own language where the
   profile genuinely supports that framing, without stuffing in keywords the
-  profile does not back up?
+  profile does not back up? Judge only against the vocabulary the profile
+  CAN honestly support: a missing job-description keyword must not lower
+  this score when the profile has no basis for it and the gap is disclosed.
+  Deduct for supported terms left unmirrored and for unsupported terms
+  smuggled in.
 - bulletStrength: are the bullets specific and outcome-oriented, not vague
   restatements of duties?
 - honesty: cross-check every claim in the tailored resume against the
   profile JSON, line by line. Any claim, number, or skill that is not
   traceable to the profile must lower this score sharply, even if it sounds
-  plausible.
+  plausible. Honest transferable positioning (for example presenting a
+  backend engineer as a strong transitional candidate for an adjacent role,
+  with the stretch disclosed in the gaps) is NOT a dishonesty and must not
+  be penalized here; only untraceable claims are.
 - gapQuality: are the listed gaps real (genuinely required by the job
   description and not clearly covered by the profile) and actionable, not
   vague or invented?
 - headlineSummary: do the headline and summary accurately and compellingly
-  represent this candidate for this specific role?
+  represent this candidate for this specific role? For stretch roles, the
+  best possible headline and summary position the candidate honestly as a
+  transition (bridging from what they have to what the role needs) — score
+  that framing as high as a direct match would be for a matching profile;
+  do not demand the summary claim experience the profile lacks, and do not
+  reward it if it does.
 
 Return only the structured scores; no commentary outside the schema.`
 
