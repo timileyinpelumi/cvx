@@ -989,3 +989,35 @@ func TestHandlersGuardMissingUserIDContext(t *testing.T) {
 		t.Fatalf("want 401, got %d: %s", rec.Code, rec.Body)
 	}
 }
+
+func TestDeleteGenerationRoute(t *testing.T) {
+	_, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBody("Python Backend Engineer"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("generate: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var got generateResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/generations/"+got.ID, nil))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: want 204, got %d: %s", rec.Code, rec.Body)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations/"+got.ID+"/pdf", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("pdf after delete: want 404, got %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/generations/"+got.ID, nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("second delete: want 404, got %d", rec.Code)
+	}
+}

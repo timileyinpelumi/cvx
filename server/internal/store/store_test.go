@@ -686,3 +686,31 @@ func TestMigrationAddsCoverColumnsIdempotently(t *testing.T) {
 		t.Fatalf("got %q %q %v", pdf, fn, err)
 	}
 }
+
+func TestDeleteGenerationScopedPerUser(t *testing.T) {
+	s := open(t)
+	userA := testUser(t, s, "google", "a-1")
+	userB := testUser(t, s, "google", "b-1")
+	ta := model.Tailored{TargetRole: "X"}
+	meta, err := s.SaveGeneration(userA, ta, []byte("pdf"), "a.pdf", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ok, err := s.DeleteGeneration(userB, meta.ID); err != nil || ok {
+		t.Fatalf("other user's delete: want false,nil got %v,%v", ok, err)
+	}
+	if list, _ := s.ListGenerations(userA); len(list) != 1 {
+		t.Fatalf("generation vanished after foreign delete: %d rows", len(list))
+	}
+
+	if ok, err := s.DeleteGeneration(userA, meta.ID); err != nil || !ok {
+		t.Fatalf("owner delete: want true,nil got %v,%v", ok, err)
+	}
+	if ok, err := s.DeleteGeneration(userA, meta.ID); err != nil || ok {
+		t.Fatalf("second delete: want false,nil got %v,%v", ok, err)
+	}
+	if list, _ := s.ListGenerations(userA); len(list) != 0 {
+		t.Fatalf("want empty list after delete, got %d rows", len(list))
+	}
+}

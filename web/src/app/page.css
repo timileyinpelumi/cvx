@@ -162,13 +162,31 @@
 }
 
 /* The stage is the app's only scroll container: the masthead stays pinned
-   and the document itself never scrolls. */
+   and the document itself never scrolls. The 4px side padding paired with
+   the negative margin gives focus rings and borders room inside the clip
+   edge without shifting the content column. */
 .stage {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-bottom: 32px;
+  margin: 0 -4px;
+  padding: 4px 4px 32px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--edge) transparent;
+}
+
+.stage::-webkit-scrollbar {
+  width: 6px;
+}
+
+.stage::-webkit-scrollbar-thumb {
+  background: var(--edge);
+  border-radius: 3px;
+}
+
+.stage::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .tailor {
@@ -398,13 +416,19 @@
 }
 
 .profile-replace-panel {
-  margin-top: 16px;
+  padding-bottom: 16px;
 }
 
 .profile-account {
   margin-top: 32px;
-  padding-top: 24px;
-  border-top: 1px solid var(--edge);
+}
+
+.account-heading {
+  margin-bottom: 8px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 .account-line {
@@ -426,39 +450,52 @@
 
 /* ----------------------------------------------------------- profile update -- */
 
-/* No gap between the two disclosures: their 44px targets already carry the
-   air, and the pair should read as one short list of profile actions. */
-.profile-update {
-  margin-bottom: 0;
+/* The two disclosures read as one flat list of profile actions: full-width
+   rows with hairline dividers, an icon naming the action, and a chevron
+   carrying the open state. */
+.profile-actions {
+  margin-top: 8px;
+  border-bottom: 1px solid var(--edge);
 }
 
-/* Both profile disclosures share one treatment: add and replace are the same
-   kind of action, so neither may out-shout the other. */
-.profile-update-toggle,
-.profile-replace-toggle {
-  display: inline-flex;
+.profile-toggle {
+  display: flex;
   align-items: center;
-  min-height: 44px;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
   padding: 0;
   background: none;
-  border: none;
+  border: 0;
+  border-top: 1px solid var(--edge);
   font-family: var(--font-body);
   font-size: 14px;
+  font-weight: 500;
   color: var(--ink);
+  text-align: left;
   cursor: pointer;
+  transition: color 120ms ease;
 }
 
-.profile-update-toggle:hover,
-.profile-replace-toggle:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+.profile-toggle:hover {
+  color: var(--chalk);
+}
+
+.toggle-chevron {
+  margin-left: auto;
+  color: var(--muted);
+  transition: transform 120ms ease;
+}
+
+.toggle-chevron.is-open {
+  transform: rotate(180deg);
 }
 
 .profile-update-row {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 4px;
+  padding-bottom: 16px;
 }
 
 .profile-update-field {
@@ -853,6 +890,52 @@
   color: var(--muted);
 }
 
+.archive-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px;
+  min-height: 44px;
+  margin-bottom: 4px;
+}
+
+.archive-bar-count {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.archive-bar-action {
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: 0;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--chalk);
+  cursor: pointer;
+}
+
+.archive-bar-action:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.archive-bar-action:disabled {
+  color: var(--muted);
+  cursor: default;
+  text-decoration: none;
+}
+
+.archive-bar-action--danger {
+  color: var(--gap-missing);
+}
+
+.archive-bar-action--quiet {
+  color: var(--muted);
+}
+
 .archive-list {
   padding: 0;
   list-style: none;
@@ -860,13 +943,25 @@
 
 .archive-row {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 12px;
   padding: 12px 0;
 }
 
 .archive-row + .archive-row {
   border-top: 1px solid var(--edge);
+}
+
+.archive-check {
+  margin-top: 3px;
+}
+
+.archive-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
 }
 
 .archive-info {
@@ -932,6 +1027,42 @@
   text-underline-offset: 3px;
 }
 
+.archive-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.archive-pager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--ink);
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.archive-pager-btn:hover {
+  color: var(--chalk);
+}
+
+.archive-pager-btn:disabled {
+  color: var(--edge);
+  cursor: default;
+}
+
 @media (max-width: 480px) {
   .archive-action-label {
     display: none;
@@ -940,10 +1071,21 @@
 
 @media (min-width: 481px) {
   .archive-row {
+    align-items: center;
+  }
+
+  .archive-check {
+    margin-top: 0;
+  }
+
+  .archive-main {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
     gap: 24px;
+  }
+
+  .archive-row {
     padding: 8px 0;
   }
 }

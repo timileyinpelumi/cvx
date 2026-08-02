@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ChevronDown, Plus } from "lucide-react";
 
 import type { ProfileSummary } from "./Uploader";
 
@@ -75,8 +76,19 @@ export function ProfileUpdate({ onUpdated }: ProfileUpdateProps) {
 
   return (
     <div className="profile-update">
-      <button type="button" className="profile-update-toggle" onClick={toggle}>
+      <button
+        type="button"
+        className="profile-toggle"
+        aria-expanded={open}
+        onClick={toggle}
+      >
+        <Plus size={16} aria-hidden />
         Add to profile
+        <ChevronDown
+          size={16}
+          aria-hidden
+          className={open ? "toggle-chevron is-open" : "toggle-chevron"}
+        />
       </button>
 
       {open ? (

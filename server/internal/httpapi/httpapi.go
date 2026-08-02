@@ -59,6 +59,7 @@ func (s *Server) Register(e *echo.Echo) {
 	api.POST("/generate", s.postGenerate)
 	api.GET("/generations", s.listGenerations)
 	api.GET("/gaps", s.getGaps)
+	api.DELETE("/generations/:id", s.deleteGeneration)
 	api.GET("/generations/:id/pdf", s.getGenerationPDF)
 	api.GET("/generations/:id/cover", s.getGenerationCoverPDF)
 }
@@ -320,6 +321,22 @@ func (s *Server) getGaps(c echo.Context) error {
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusOK, gapsResponse{Total: total, Trends: model.NonNil(trends)})
+}
+
+func (s *Server) deleteGeneration(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	deleted, err := s.Store.DeleteGeneration(userID, c.Param("id"))
+	if err != nil {
+		slog.Error("delete generation failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if !deleted {
+		return errJSON(c, http.StatusNotFound, "unknown generation id")
+	}
+	return c.NoContent(http.StatusNoContent)
 }
 
 func (s *Server) getGenerationPDF(c echo.Context) error {

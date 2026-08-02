@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ChevronDown, FileUp } from "lucide-react";
 
 import { ProfileUpdate } from "./ProfileUpdate";
 import { Uploader, type ProfileSummary } from "./Uploader";
@@ -51,34 +52,41 @@ export function ProfileView({
         <span className="profile-count">{profile.skillCount}</span> skills
       </p>
 
-      <ProfileUpdate onUpdated={onProfile} />
+      <div className="profile-actions">
+        <ProfileUpdate onUpdated={onProfile} />
 
-      <div className="profile-replace">
-        {/* Deliberately the lighter of the two disclosures: replacing the
-            profile throws away what upload and every note have built up. */}
-        <button
-          type="button"
-          className="profile-replace-toggle"
-          aria-expanded={replacing}
-          onClick={() => setReplacing((open) => !open)}
-        >
-          Replace resume
-        </button>
-
-        {replacing ? (
-          <div className="profile-replace-panel">
-            <Uploader
-              replace
-              onUploaded={(next) => {
-                onProfile(next);
-                setReplacing(false);
-              }}
+        <div className="profile-replace">
+          <button
+            type="button"
+            className="profile-toggle"
+            aria-expanded={replacing}
+            onClick={() => setReplacing((open) => !open)}
+          >
+            <FileUp size={16} aria-hidden />
+            Replace resume
+            <ChevronDown
+              size={16}
+              aria-hidden
+              className={replacing ? "toggle-chevron is-open" : "toggle-chevron"}
             />
-          </div>
-        ) : null}
+          </button>
+
+          {replacing ? (
+            <div className="profile-replace-panel">
+              <Uploader
+                replace
+                onUploaded={(next) => {
+                  onProfile(next);
+                  setReplacing(false);
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className="profile-account">
+        <h3 className="account-heading">Account</h3>
         <p className="account-line">
           {me.email}
           <span className="profile-sep">·</span>

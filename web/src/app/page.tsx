@@ -106,6 +106,10 @@ export default function Home() {
 
   function handleResult(next: GenerateResult) {
     setResult(next);
+    refreshGenerated();
+  }
+
+  function refreshGenerated() {
     void (async () => {
       const results = await Promise.all([loadGenerations(), loadGaps()]);
       if (results.some(Boolean)) signOut();
@@ -152,7 +156,7 @@ export default function Home() {
 
         {navigating && view === "history" ? (
           generations.length > 0 ? (
-            <Archive rows={generations} />
+            <Archive rows={generations} onChanged={refreshGenerated} />
           ) : (
             <p className="view-empty">Nothing here yet. Tailor your first resume.</p>
           )

@@ -294,6 +294,21 @@ func (s *Store) ListGenerations(userID int64) ([]GenerationMeta, error) {
 	return out, nil
 }
 
+// DeleteGeneration removes one generation owned by userID, reporting
+// whether a row was actually deleted (false for unknown ids and other
+// users' generations alike).
+func (s *Store) DeleteGeneration(userID int64, id string) (bool, error) {
+	res, err := s.db.Exec(`DELETE FROM generations WHERE id = ? AND user_id = ?`, id, userID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 func (s *Store) GetGenerationPDF(userID int64, id string) (pdf []byte, filename string, err error) {
 	err = s.db.QueryRow(`SELECT pdf, filename FROM generations WHERE id = ? AND user_id = ?`, id, userID).Scan(&pdf, &filename)
 	if err == sql.ErrNoRows {
