@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -18,12 +19,27 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
-// oauthStateCookieName is the short-lived cookie tying an /auth/:provider/
-// start redirect to its matching callback (CSRF protection for the OAuth
-// flow).
-const oauthStateCookieName = "cvx_oauth_state"
-
 const oauthStateTTL = 10 * time.Minute
+
+// oauthRequestTimeout bounds the token exchange and userinfo fetch(es) for
+// one callback, so a slow or hanging provider can't tie up the handler
+// indefinitely.
+const oauthRequestTimeout = 10 * time.Second
+
+// oauthStateCookieName returns the short-lived cookie name tying an
+// /auth/:provider/start redirect to its matching callback (CSRF protection
+// for the OAuth flow). Scoped per provider so starting a Google flow and a
+// GitHub flow in two tabs can't clobber each other's state cookie.
+func oauthStateCookieName(provider string) string {
+	return "cvx_oauth_state_" + provider
+}
+
+// errEmailNotVerified is returned by the provider userinfo fetchers when
+// the account has no usable verified email (Google: email_verified=false;
+// GitHub: no primary+verified address in /user/emails). AuthCallback treats
+// it as a sign-in denial (redirect to /?error=forbidden), not a transient
+// upstream failure.
+var errEmailNotVerified = errors.New("oauth: no verified email")
 
 // Provider wires one OAuth2 identity provider into cvx. Endpoint URLs
 // (via Config.Endpoint) and the userinfo URL(s) below are plain fields —
@@ -114,7 +130,7 @@ func (a *Auth) AuthStart(c echo.Context) error {
 		return errJSON(c, http.StatusInternalServerError, "internal error")
 	}
 	c.SetCookie(&http.Cookie{
-		Name:     oauthStateCookieName,
+		Name:     oauthStateCookieName(p.Name),
 		Value:    state,
 		Path:     "/",
 		MaxAge:   int(oauthStateTTL.Seconds()),
@@ -130,18 +146,28 @@ func (a *Auth) AuthStart(c echo.Context) error {
 // enforces the email allowlist (if configured), upserts the user, and sets
 // the session cookie.
 func (a *Auth) AuthCallback(c echo.Context) error {
-	p, ok := a.Providers[c.Param("provider")]
+	providerName := c.Param("provider")
+
+	// The state cookie is one-shot: read it, then clear it immediately —
+	// before any call below writes the response. A header set after
+	// WriteHeader has run is silently dropped by net/http (this isn't a
+	// test-only quirk), so clearing must happen up front, not via defer, or
+	// every error path below would leave the stale cookie behind.
+	stateCookie, stateCookieErr := c.Cookie(oauthStateCookieName(providerName))
+	clearCookie(c, oauthStateCookieName(providerName))
+
+	p, ok := a.Providers[providerName]
 	if !ok {
 		return errJSON(c, http.StatusNotFound, "unknown provider")
 	}
 
-	stateCookie, err := c.Cookie(oauthStateCookieName)
-	if err != nil || stateCookie.Value == "" || stateCookie.Value != c.QueryParam("state") {
+	if stateCookieErr != nil || stateCookie.Value == "" || stateCookie.Value != c.QueryParam("state") {
 		return errJSON(c, http.StatusBadRequest, "invalid oauth state")
 	}
-	clearCookie(c, oauthStateCookieName)
 
-	ctx := c.Request().Context()
+	ctx, cancel := context.WithTimeout(c.Request().Context(), oauthRequestTimeout)
+	defer cancel()
+
 	token, err := p.Config.Exchange(ctx, c.QueryParam("code"))
 	if err != nil {
 		slog.Error("oauth exchange failed", "provider", p.Name, "err", err)
@@ -151,14 +177,17 @@ func (a *Auth) AuthCallback(c echo.Context) error {
 	client := p.Config.Client(ctx, token)
 	providerID, email, name, err := fetchUserInfo(ctx, client, p)
 	if err != nil {
+		if errors.Is(err, errEmailNotVerified) {
+			slog.Warn("oauth sign-in denied: no verified email", "provider", p.Name)
+			return c.Redirect(http.StatusFound, "/?error=forbidden")
+		}
 		slog.Error("oauth userinfo failed", "provider", p.Name, "err", err)
 		return errJSON(c, http.StatusBadGateway, "oauth userinfo failed")
 	}
 
 	if len(a.AllowedEmails) > 0 && !a.AllowedEmails[strings.ToLower(email)] {
 		slog.Warn("oauth sign-in denied by allowlist", "provider", p.Name, "email", email)
-		c.Response().Header().Set(echo.HeaderLocation, "/?error=forbidden")
-		return c.NoContent(http.StatusForbidden)
+		return c.Redirect(http.StatusFound, "/?error=forbidden")
 	}
 
 	u, err := a.Store.UpsertUser(p.Name, providerID, email, name)
@@ -211,45 +240,56 @@ func getJSON(ctx context.Context, client *http.Client, url string, out any) erro
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+// fetchGoogleUser refuses sign-in (errEmailNotVerified) when
+// email_verified is false — an unverified email is not proof of account
+// ownership, so it must never be trusted as the user's identity.
 func fetchGoogleUser(ctx context.Context, client *http.Client, p *Provider) (string, string, string, error) {
 	var body struct {
-		Sub   string `json:"sub"`
-		Email string `json:"email"`
-		Name  string `json:"name"`
+		Sub           string `json:"sub"`
+		Email         string `json:"email"`
+		EmailVerified bool   `json:"email_verified"`
+		Name          string `json:"name"`
 	}
 	if err := getJSON(ctx, client, p.UserInfoURL, &body); err != nil {
 		return "", "", "", err
 	}
+	if !body.EmailVerified {
+		return "", "", "", errEmailNotVerified
+	}
 	return body.Sub, body.Email, body.Name, nil
 }
 
+// fetchGitHubUser never trusts the (optional, unverified-by-GitHub) public
+// email on /user — it always resolves the email via /user/emails and only
+// accepts the address marked both primary and verified, refusing sign-in
+// (errEmailNotVerified) when no such address exists.
 func fetchGitHubUser(ctx context.Context, client *http.Client, p *Provider) (string, string, string, error) {
 	var user struct {
 		ID    int64  `json:"id"`
 		Login string `json:"login"`
 		Name  string `json:"name"`
-		Email string `json:"email"`
 	}
 	if err := getJSON(ctx, client, p.UserInfoURL, &user); err != nil {
 		return "", "", "", err
 	}
 
-	email := user.Email
-	if email == "" && p.EmailsURL != "" {
-		var emails []struct {
-			Email    string `json:"email"`
-			Primary  bool   `json:"primary"`
-			Verified bool   `json:"verified"`
+	var emails []struct {
+		Email    string `json:"email"`
+		Primary  bool   `json:"primary"`
+		Verified bool   `json:"verified"`
+	}
+	if err := getJSON(ctx, client, p.EmailsURL, &emails); err != nil {
+		return "", "", "", err
+	}
+	var email string
+	for _, e := range emails {
+		if e.Primary && e.Verified {
+			email = e.Email
+			break
 		}
-		if err := getJSON(ctx, client, p.EmailsURL, &emails); err != nil {
-			return "", "", "", err
-		}
-		for _, e := range emails {
-			if e.Primary && e.Verified {
-				email = e.Email
-				break
-			}
-		}
+	}
+	if email == "" {
+		return "", "", "", errEmailNotVerified
 	}
 
 	name := user.Name

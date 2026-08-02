@@ -188,6 +188,36 @@ func generateRequestBody(role string) *http.Request {
 	return req
 }
 
+// TestLogoutUnguardedEvenWithoutValidSession checks the real Register
+// wiring (not just the auth package's own unit test) puts /api/logout
+// outside the auth-guarded /api group: an OAuth-mode server with no session
+// cookie at all must still let logout succeed (204), never 401.
+func TestLogoutUnguardedEvenWithoutValidSession(t *testing.T) {
+	st := newStore(t)
+	s := &Server{
+		Store: st,
+		LLM:   fakeLLM{},
+		Mail:  func(model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Auth:  &auth.Auth{Store: st, SessionSecret: "test-session-secret-at-least-32-chars-long"}, // OAuth mode, no cookie
+	}
+	e := echo.New()
+	s.Register(e)
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/logout", nil))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+
+	// A guarded route in the same server must still 401 without a session,
+	// proving this isn't accidentally-open auth, just logout specifically.
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401 for guarded route, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
 func TestProfileNotFoundThenUpload(t *testing.T) {
 	_, e := newTestServer(t)
 

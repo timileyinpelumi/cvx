@@ -134,12 +134,15 @@ func TestOAuthModeValidCookieAuthenticates(t *testing.T) {
 	}
 }
 
+// newMeEchoServer mirrors httpapi.Server.Register's real wiring for /api/me
+// and /api/logout: logout is registered outside the guarded group (F6 — a
+// bad/expired cookie must still be clearable), me stays behind it.
 func newMeEchoServer(a *Auth) *echo.Echo {
 	e := echo.New()
+	e.POST("/api/logout", a.Logout)
 	api := e.Group("/api")
 	api.Use(a.Middleware)
 	api.GET("/me", a.GetMe)
-	api.POST("/logout", a.Logout)
 	return e
 }
 
@@ -187,5 +190,37 @@ func TestLogoutClearsCookieAnd204s(t *testing.T) {
 	}
 	if c.Value != "" || c.MaxAge > 0 {
 		t.Fatalf("want cleared cookie (empty value, non-positive MaxAge), got %+v", c)
+	}
+}
+
+// TestLogoutWithNoCookieStill204s drives F6: logout must not require a
+// valid (or any) session cookie — an OAuth-mode caller with a missing or
+// already-expired cookie must still be able to clear it and get 204, not
+// the 401 the guarded /api group would otherwise produce.
+func TestLogoutWithNoCookieStill204s(t *testing.T) {
+	st := newStore(t)
+	a := &Auth{Store: st, SessionSecret: "secret"} // OAuth mode, no dev bypass
+	e := newMeEchoServer(a)
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/logout", nil))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// TestLogoutWithBogusCookieStill204s is the same check with an
+// invalid/tampered cookie attached, rather than no cookie at all.
+func TestLogoutWithBogusCookieStill204s(t *testing.T) {
+	st := newStore(t)
+	a := &Auth{Store: st, SessionSecret: "secret"}
+	e := newMeEchoServer(a)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/logout", nil)
+	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: "bogus"})
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
 	}
 }

@@ -29,6 +29,12 @@ type Config struct {
 	AllowedEmails []string
 }
 
+// minSessionSecretLen is the minimum acceptable length for
+// CVX_SESSION_SECRET: short enough to catch placeholder/typo values, well
+// short of what HMAC-SHA256 actually needs (32 bytes matches the hash's
+// output size).
+const minSessionSecretLen = 32
+
 // New builds Auth from Config, applying the auth-mode precedence documented
 // on Auth: dev mode (DevUserEmail set) wins outright; otherwise at least one
 // OAuth provider must have both its client id and secret set, alongside
@@ -48,8 +54,8 @@ func New(cfg Config) (*Auth, error) {
 	if cfg.GoogleClientID == "" && cfg.GitHubClientID == "" {
 		return nil, fmt.Errorf("no auth configured: set CVX_DEV_USER for local dev, or OAuth credentials (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET and/or GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET) plus CVX_BASE_URL and CVX_SESSION_SECRET")
 	}
-	if cfg.SessionSecret == "" {
-		return nil, fmt.Errorf("CVX_SESSION_SECRET is required in OAuth mode")
+	if len(cfg.SessionSecret) < minSessionSecretLen {
+		return nil, fmt.Errorf("CVX_SESSION_SECRET is required in OAuth mode and must be at least %d characters (got %d)", minSessionSecretLen, len(cfg.SessionSecret))
 	}
 	if cfg.BaseURL == "" {
 		return nil, fmt.Errorf("CVX_BASE_URL is required in OAuth mode")

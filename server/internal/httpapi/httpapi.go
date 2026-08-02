@@ -45,10 +45,14 @@ func (s *Server) Register(e *echo.Echo) {
 	e.GET("/auth/:provider/start", s.Auth.AuthStart)
 	e.GET("/auth/:provider/callback", s.Auth.AuthCallback)
 
+	// /api/logout is also registered outside the guarded group: a bad or
+	// expired session cookie must still be clearable, not stuck behind the
+	// 401 it would itself cause.
+	e.POST("/api/logout", s.Auth.Logout)
+
 	api := e.Group("/api")
 	api.Use(s.Auth.Middleware)
 	api.GET("/me", s.Auth.GetMe)
-	api.POST("/logout", s.Auth.Logout)
 	api.GET("/profile", s.getProfile)
 	api.POST("/profile", s.postProfile)
 	api.POST("/profile/extend", s.postProfileExtend)

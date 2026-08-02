@@ -4,6 +4,11 @@ import (
 	"testing"
 )
 
+// testSessionSecret satisfies New's minimum-length requirement (F4) for
+// tests that just need a valid OAuth-mode config, not to exercise the
+// length check itself.
+const testSessionSecret = "test-session-secret-at-least-32-chars-long"
+
 func TestNewDevModeWinsOverOAuthVars(t *testing.T) {
 	st := newStore(t)
 	a, err := New(Config{
@@ -27,7 +32,7 @@ func TestNewOAuthModeConfiguresOnlyProvidersWithCreds(t *testing.T) {
 	st := newStore(t)
 	a, err := New(Config{
 		Store:              st,
-		SessionSecret:      "secret",
+		SessionSecret:      testSessionSecret,
 		BaseURL:            "http://localhost:3000",
 		GoogleClientID:     "id",
 		GoogleClientSecret: "secret",
@@ -66,11 +71,28 @@ func TestNewErrorsWhenOAuthModeMissingSessionSecret(t *testing.T) {
 	}
 }
 
+// TestNewErrorsWhenSessionSecretTooShort drives F4: a present but
+// too-short CVX_SESSION_SECRET must be rejected at startup, not silently
+// accepted as a weak HMAC key.
+func TestNewErrorsWhenSessionSecretTooShort(t *testing.T) {
+	st := newStore(t)
+	_, err := New(Config{
+		Store:              st,
+		SessionSecret:      "too-short",
+		BaseURL:            "http://localhost:3000",
+		GoogleClientID:     "id",
+		GoogleClientSecret: "secret",
+	})
+	if err == nil {
+		t.Fatal("want error when CVX_SESSION_SECRET is shorter than 32 characters")
+	}
+}
+
 func TestNewNormalizesAllowedEmailsCaseInsensitively(t *testing.T) {
 	st := newStore(t)
 	a, err := New(Config{
 		Store:              st,
-		SessionSecret:      "secret",
+		SessionSecret:      testSessionSecret,
 		BaseURL:            "http://localhost:3000",
 		GoogleClientID:     "id",
 		GoogleClientSecret: "secret",

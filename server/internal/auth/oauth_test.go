@@ -21,7 +21,7 @@ const fakeTokenResponse = `{"access_token":"fake-access-token","token_type":"bea
 // OAuth token endpoint and the Google-shaped userinfo endpoint, so
 // Provider's Config.Endpoint and UserInfoURL can point at it instead of the
 // real Google endpoints.
-func newFakeGoogleServer(t *testing.T, sub, email, name string) *httptest.Server {
+func newFakeGoogleServer(t *testing.T, sub, email string, emailVerified bool, name string) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +33,9 @@ func newFakeGoogleServer(t *testing.T, sub, email, name string) *httptest.Server
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]string{"sub": sub, "email": email, "name": name})
+		json.NewEncoder(w).Encode(map[string]any{
+			"sub": sub, "email": email, "email_verified": emailVerified, "name": name,
+		})
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -58,9 +60,9 @@ func googleProviderAgainst(srv *httptest.Server) *Provider {
 }
 
 // newFakeGitHubServer stands up an httptest server answering the token
-// endpoint plus GitHub's two-call userinfo shape: /user (which may or may
-// not carry a public email) and /user/emails (the primary-verified-email
-// fallback).
+// endpoint plus GitHub's two-call userinfo shape: /user (whose email field
+// is never trusted — see F2 in the security review) and /user/emails (the
+// sole source of truth for a primary+verified address).
 func newFakeGitHubServer(t *testing.T, id int64, login, name, publicEmail string, emails []map[string]any) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -123,21 +125,22 @@ func startFlow(t *testing.T, e *echo.Echo, provider string) (state string, state
 	if state == "" {
 		t.Fatalf("want non-empty state in redirect Location %q", loc)
 	}
+	wantName := oauthStateCookieName(provider)
 	cookies := rec.Result().Cookies()
 	for _, c := range cookies {
-		if c.Name == oauthStateCookieName {
+		if c.Name == wantName {
 			stateCookie = c
 		}
 	}
 	if stateCookie == nil {
-		t.Fatalf("want %s cookie set, got %+v", oauthStateCookieName, cookies)
+		t.Fatalf("want %s cookie set, got %+v", wantName, cookies)
 	}
 	return state, stateCookie
 }
 
 func TestOAuthStartRedirectsWithStateCookie(t *testing.T) {
 	st := newStore(t)
-	srv := newFakeGoogleServer(t, "sub-1", "a@e.com", "A")
+	srv := newFakeGoogleServer(t, "sub-1", "a@e.com", true, "A")
 	a := &Auth{Store: st, SessionSecret: "secret", Providers: map[string]*Provider{"google": googleProviderAgainst(srv)}}
 	e := newOAuthEchoServer(a)
 
@@ -147,6 +150,9 @@ func TestOAuthStartRedirectsWithStateCookie(t *testing.T) {
 	}
 	if !cookie.HttpOnly {
 		t.Fatal("want state cookie HttpOnly")
+	}
+	if cookie.Name != "cvx_oauth_state_google" {
+		t.Fatalf("want provider-scoped cookie name, got %q", cookie.Name)
 	}
 }
 
@@ -164,7 +170,7 @@ func TestOAuthStartUnknownProvider404(t *testing.T) {
 
 func TestOAuthCallbackGoogleHappyPath(t *testing.T) {
 	st := newStore(t)
-	srv := newFakeGoogleServer(t, "sub-1", "ada@example.com", "Ada Lovelace")
+	srv := newFakeGoogleServer(t, "sub-1", "ada@example.com", true, "Ada Lovelace")
 	a := &Auth{Store: st, SessionSecret: "secret", Providers: map[string]*Provider{"google": googleProviderAgainst(srv)}}
 	e := newOAuthEchoServer(a)
 
@@ -181,14 +187,20 @@ func TestOAuthCallbackGoogleHappyPath(t *testing.T) {
 		t.Fatalf("want redirect to /, got %q", loc)
 	}
 
-	var sessionCookie *http.Cookie
+	var sessionCookie, clearedStateCookie *http.Cookie
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == SessionCookieName {
 			sessionCookie = c
 		}
+		if c.Name == oauthStateCookieName("google") {
+			clearedStateCookie = c
+		}
 	}
 	if sessionCookie == nil {
 		t.Fatalf("want session cookie set, got %+v", rec.Result().Cookies())
+	}
+	if clearedStateCookie == nil || clearedStateCookie.Value != "" || clearedStateCookie.MaxAge > 0 {
+		t.Fatalf("want state cookie cleared on successful callback, got %+v", clearedStateCookie)
 	}
 	userID, ok := Verify(sessionCookie.Value, "secret")
 	if !ok {
@@ -204,14 +216,48 @@ func TestOAuthCallbackGoogleHappyPath(t *testing.T) {
 	}
 }
 
-func TestOAuthCallbackGitHubUsesPrimaryVerifiedEmailWhenPublicEmailEmpty(t *testing.T) {
+// TestOAuthCallbackGoogleUnverifiedEmailDenied drives F3: Google's
+// email_verified=false must refuse sign-in (redirect to /?error=forbidden),
+// never trusting an unverified email as proof of identity.
+func TestOAuthCallbackGoogleUnverifiedEmailDenied(t *testing.T) {
+	st := newStore(t)
+	srv := newFakeGoogleServer(t, "sub-1", "unverified@example.com", false, "Unverified")
+	a := &Auth{Store: st, SessionSecret: "secret", Providers: map[string]*Provider{"google": googleProviderAgainst(srv)}}
+	e := newOAuthEchoServer(a)
+
+	state, stateCookie := startFlow(t, e, "google")
+	req := httptest.NewRequest(http.MethodGet, "/auth/google/callback?code=fake-code&state="+state, nil)
+	req.AddCookie(stateCookie)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("want 302, got %d: %s", rec.Code, rec.Body)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/?error=forbidden" {
+		t.Fatalf("want Location /?error=forbidden, got %q", loc)
+	}
+
+	u, err := st.GetUser(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u != nil {
+		t.Fatalf("want no user created for unverified email, got %+v", u)
+	}
+}
+
+// TestOAuthCallbackGitHubAlwaysUsesPrimaryVerifiedEmailIgnoringPublicEmail
+// drives F2: even when /user carries a (GitHub-unverified) public email,
+// cvx must ignore it entirely and resolve identity only via the
+// primary+verified address from /user/emails.
+func TestOAuthCallbackGitHubAlwaysUsesPrimaryVerifiedEmailIgnoringPublicEmail(t *testing.T) {
 	st := newStore(t)
 	emails := []map[string]any{
 		{"email": "unverified@example.com", "primary": false, "verified": false},
 		{"email": "secondary@example.com", "primary": false, "verified": true},
 		{"email": "primary@example.com", "primary": true, "verified": true},
 	}
-	srv := newFakeGitHubServer(t, 555, "bob", "Bob Smith", "", emails)
+	srv := newFakeGitHubServer(t, 555, "bob", "Bob Smith", "ignored-public@example.com", emails)
 	a := &Auth{Store: st, SessionSecret: "secret", Providers: map[string]*Provider{"github": githubProviderAgainst(srv)}}
 	e := newOAuthEchoServer(a)
 
@@ -239,13 +285,47 @@ func TestOAuthCallbackGitHubUsesPrimaryVerifiedEmailWhenPublicEmailEmpty(t *test
 		t.Fatalf("got %v, %v", u, err)
 	}
 	if u.ProviderID != "555" || u.Email != "primary@example.com" || u.Name != "Bob Smith" || u.Provider != "github" {
-		t.Fatalf("got %+v", u)
+		t.Fatalf("want the primary+verified email (never the public one), got %+v", u)
+	}
+}
+
+// TestOAuthCallbackGitHubNoVerifiedEmailDenied drives F2's rejection path:
+// no primary+verified address anywhere in /user/emails must deny sign-in,
+// not fall back to an unverified or public address.
+func TestOAuthCallbackGitHubNoVerifiedEmailDenied(t *testing.T) {
+	st := newStore(t)
+	emails := []map[string]any{
+		{"email": "unverified@example.com", "primary": true, "verified": false},
+		{"email": "other@example.com", "primary": false, "verified": true},
+	}
+	srv := newFakeGitHubServer(t, 555, "bob", "Bob Smith", "public@example.com", emails)
+	a := &Auth{Store: st, SessionSecret: "secret", Providers: map[string]*Provider{"github": githubProviderAgainst(srv)}}
+	e := newOAuthEchoServer(a)
+
+	state, stateCookie := startFlow(t, e, "github")
+	req := httptest.NewRequest(http.MethodGet, "/auth/github/callback?code=fake-code&state="+state, nil)
+	req.AddCookie(stateCookie)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("want 302, got %d: %s", rec.Code, rec.Body)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/?error=forbidden" {
+		t.Fatalf("want Location /?error=forbidden, got %q", loc)
+	}
+
+	u, err := st.GetUser(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u != nil {
+		t.Fatalf("want no user created without a verified email, got %+v", u)
 	}
 }
 
 func TestOAuthCallbackStateMismatchBadRequest(t *testing.T) {
 	st := newStore(t)
-	srv := newFakeGoogleServer(t, "sub-1", "a@e.com", "A")
+	srv := newFakeGoogleServer(t, "sub-1", "a@e.com", true, "A")
 	a := &Auth{Store: st, SessionSecret: "secret", Providers: map[string]*Provider{"google": googleProviderAgainst(srv)}}
 	e := newOAuthEchoServer(a)
 
@@ -261,7 +341,7 @@ func TestOAuthCallbackStateMismatchBadRequest(t *testing.T) {
 
 func TestOAuthCallbackMissingStateCookieBadRequest(t *testing.T) {
 	st := newStore(t)
-	srv := newFakeGoogleServer(t, "sub-1", "a@e.com", "A")
+	srv := newFakeGoogleServer(t, "sub-1", "a@e.com", true, "A")
 	a := &Auth{Store: st, SessionSecret: "secret", Providers: map[string]*Provider{"google": googleProviderAgainst(srv)}}
 	e := newOAuthEchoServer(a)
 
@@ -273,9 +353,12 @@ func TestOAuthCallbackMissingStateCookieBadRequest(t *testing.T) {
 	}
 }
 
+// TestOAuthCallbackAllowlistDeniesForbidden drives F1: a denial must be a
+// browser-followable redirect (302 + Location), not a 403 with a Location
+// header browsers won't act on.
 func TestOAuthCallbackAllowlistDeniesForbidden(t *testing.T) {
 	st := newStore(t)
-	srv := newFakeGoogleServer(t, "sub-1", "not-allowed@example.com", "Nope")
+	srv := newFakeGoogleServer(t, "sub-1", "not-allowed@example.com", true, "Nope")
 	a := &Auth{
 		Store:         st,
 		SessionSecret: "secret",
@@ -289,8 +372,8 @@ func TestOAuthCallbackAllowlistDeniesForbidden(t *testing.T) {
 	req.AddCookie(stateCookie)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("want 403, got %d: %s", rec.Code, rec.Body)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("want 302, got %d: %s", rec.Code, rec.Body)
 	}
 	if loc := rec.Header().Get("Location"); loc != "/?error=forbidden" {
 		t.Fatalf("want Location /?error=forbidden, got %q", loc)
@@ -308,7 +391,7 @@ func TestOAuthCallbackAllowlistDeniesForbidden(t *testing.T) {
 
 func TestOAuthCallbackAllowlistAllowsListedEmail(t *testing.T) {
 	st := newStore(t)
-	srv := newFakeGoogleServer(t, "sub-1", "allowed@example.com", "Allowed")
+	srv := newFakeGoogleServer(t, "sub-1", "allowed@example.com", true, "Allowed")
 	a := &Auth{
 		Store:         st,
 		SessionSecret: "secret",
@@ -327,9 +410,34 @@ func TestOAuthCallbackAllowlistAllowsListedEmail(t *testing.T) {
 	}
 }
 
+// TestOAuthCallbackStateCookieClearedOnStateMismatch drives F7's "clear on
+// every callback error return" half for the state-mismatch branch.
+func TestOAuthCallbackStateCookieClearedOnStateMismatch(t *testing.T) {
+	st := newStore(t)
+	srv := newFakeGoogleServer(t, "sub-1", "a@e.com", true, "A")
+	a := &Auth{Store: st, SessionSecret: "secret", Providers: map[string]*Provider{"google": googleProviderAgainst(srv)}}
+	e := newOAuthEchoServer(a)
+
+	_, stateCookie := startFlow(t, e, "google")
+	req := httptest.NewRequest(http.MethodGet, "/auth/google/callback?code=fake-code&state=wrong-state", nil)
+	req.AddCookie(stateCookie)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	var cleared *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == oauthStateCookieName("google") {
+			cleared = c
+		}
+	}
+	if cleared == nil || cleared.Value != "" || cleared.MaxAge > 0 {
+		t.Fatalf("want state cookie cleared even on state-mismatch error, got %+v", cleared)
+	}
+}
+
 func TestListProvidersOnlyConfigured(t *testing.T) {
 	st := newStore(t)
-	srv := newFakeGoogleServer(t, "sub-1", "a@e.com", "A")
+	srv := newFakeGoogleServer(t, "sub-1", "a@e.com", true, "A")
 	a := &Auth{Store: st, SessionSecret: "secret", Providers: map[string]*Provider{"google": googleProviderAgainst(srv)}}
 	e := newOAuthEchoServer(a)
 
