@@ -12,6 +12,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"cvx/internal/ai"
+	"cvx/internal/auth"
 	"cvx/internal/httpapi"
 	"cvx/internal/mail"
 	"cvx/internal/model"
@@ -46,6 +47,23 @@ func loadDotEnv(path string) {
 	}
 }
 
+// splitCommaEnv splits a comma-separated env var into trimmed, non-empty
+// parts, so CVX_ALLOWED_EMAILS="" or unset produces nil (no restriction)
+// rather than a slice containing one empty string.
+func splitCommaEnv(v string) []string {
+	if v == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(v, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
@@ -69,16 +87,32 @@ func main() {
 	}
 	slog.Info("llm", "provider", llmDesc)
 
-	// CVX_PASSCODE unset/empty leaves auth nil, which is a complete no-op in
-	// httpapi.Server.Register — existing localhost workflow is untouched.
-	var auth *httpapi.Auth
-	if passcode := os.Getenv("CVX_PASSCODE"); passcode != "" {
-		auth, err = httpapi.NewAuth(passcode)
-		if err != nil {
-			slog.Error("auth", "err", err)
-			os.Exit(1)
+	// Auth is not optional (see docs/superpowers/plans/2026-08-02-cvx-v1.3.md
+	// Global Constraints): CVX_DEV_USER wins for local dev, otherwise OAuth
+	// vars must be fully set, otherwise the server refuses to start.
+	authGate, err := auth.New(auth.Config{
+		Store:              st,
+		DevUserEmail:       os.Getenv("CVX_DEV_USER"),
+		SessionSecret:      os.Getenv("CVX_SESSION_SECRET"),
+		BaseURL:            os.Getenv("CVX_BASE_URL"),
+		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
+		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
+		AllowedEmails:      splitCommaEnv(os.Getenv("CVX_ALLOWED_EMAILS")),
+	})
+	if err != nil {
+		slog.Error("auth", "err", err)
+		os.Exit(1)
+	}
+	if authGate.DevUserEmail != "" {
+		slog.Info("auth", "mode", "dev", "user", authGate.DevUserEmail)
+	} else {
+		providers := make([]string, 0, len(authGate.Providers))
+		for name := range authGate.Providers {
+			providers = append(providers, name)
 		}
-		slog.Info("auth", "passcode", "enabled")
+		slog.Info("auth", "mode", "oauth", "providers", providers)
 	}
 
 	srv := &httpapi.Server{
@@ -90,7 +124,7 @@ func main() {
 			}
 			return mail.Send(t, pdf, filename, "")
 		},
-		Auth: auth,
+		Auth: authGate,
 	}
 
 	e := echo.New()

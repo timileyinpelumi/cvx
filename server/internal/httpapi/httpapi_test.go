@@ -15,6 +15,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"cvx/internal/ai"
+	"cvx/internal/auth"
 	"cvx/internal/model"
 	"cvx/internal/store"
 )
@@ -119,12 +120,23 @@ func newStore(t *testing.T) *store.Store {
 	return st
 }
 
+// devAuth builds a dev-mode Auth (auto-authenticates every request as a
+// fixed test user), matching how CVX_DEV_USER works in real local dev — the
+// data-flow tests in this file aren't testing auth itself, they just need a
+// consistently-authenticated caller so the /api group's middleware doesn't
+// reject them.
+func devAuth(st *store.Store) *auth.Auth {
+	return &auth.Auth{Store: st, DevUserEmail: "dev@test.local"}
+}
+
 func newTestServerWithLLM(t *testing.T, llm ai.LLM) (*Server, *echo.Echo) {
 	t.Helper()
+	st := newStore(t)
 	s := &Server{
-		Store: newStore(t),
+		Store: st,
 		LLM:   llm,
 		Mail:  func(model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Auth:  devAuth(st),
 	}
 	e := echo.New()
 	s.Register(e)
@@ -453,6 +465,7 @@ func TestGenerationsListNilSlicesSerializeAsEmptyArrays(t *testing.T) {
 		Store: st,
 		LLM:   fakeLLM{},
 		Mail:  func(model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Auth:  devAuth(st),
 	}
 	e := echo.New()
 	s.Register(e)
@@ -482,6 +495,7 @@ func TestGapsEndpointShape(t *testing.T) {
 		Store: st,
 		LLM:   fakeLLM{},
 		Mail:  func(model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Auth:  devAuth(st),
 	}
 	e := echo.New()
 	s.Register(e)

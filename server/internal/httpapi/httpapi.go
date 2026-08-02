@@ -14,6 +14,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"cvx/internal/ai"
+	"cvx/internal/auth"
 	"cvx/internal/jdfetch"
 	"cvx/internal/model"
 	"cvx/internal/pdfgen"
@@ -26,27 +27,28 @@ const maxUploadBytes = 15 << 20 // 15MB
 // Server holds the dependencies the HTTP handlers need. Mail is injectable
 // (it wraps mail.Send in main.go) so tests can fake it and so a failed send
 // never fails the /api/generate request. coverPDF/coverFilename are ""/nil
-// when the generation has no cover letter. Auth is nil unless CVX_PASSCODE
-// is set, in which case it gates every /api/* route below except
-// /api/login.
+// when the generation has no cover letter. Auth is required (not optional):
+// it guards every /api/* route and serves the /auth/* OAuth entrypoints;
+// see cvx/internal/auth for dev-mode vs OAuth-mode behavior.
 type Server struct {
 	Store *store.Store
 	LLM   ai.LLM
 	Mail  func(t model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error)
-	Auth  *Auth
+	Auth  *auth.Auth
 }
 
 func (s *Server) Register(e *echo.Echo) {
-	// /api/login is registered directly on e, outside the /api group, so it
-	// never runs through the group's own auth middleware below.
-	if s.Auth != nil {
-		e.POST("/api/login", s.Auth.postLogin)
-	}
+	// /auth/* is registered directly on e, outside the /api group, so it
+	// never runs through the group's own auth middleware below — these
+	// routes are how a session gets established in the first place.
+	e.GET("/auth/providers", s.Auth.ListProviders)
+	e.GET("/auth/:provider/start", s.Auth.AuthStart)
+	e.GET("/auth/:provider/callback", s.Auth.AuthCallback)
 
 	api := e.Group("/api")
-	if s.Auth != nil {
-		api.Use(s.Auth.middleware)
-	}
+	api.Use(s.Auth.Middleware)
+	api.GET("/me", s.Auth.GetMe)
+	api.POST("/logout", s.Auth.Logout)
 	api.GET("/profile", s.getProfile)
 	api.POST("/profile", s.postProfile)
 	api.POST("/profile/extend", s.postProfileExtend)

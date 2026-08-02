@@ -8,10 +8,12 @@ require (
 	github.com/labstack/echo/v4 v4.15.4
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	golang.org/x/net v0.57.0
+	golang.org/x/oauth2 v0.36.0
 	modernc.org/sqlite v1.55.0
 )
 
 require (
+	cloud.google.com/go/compute/metadata v0.5.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect

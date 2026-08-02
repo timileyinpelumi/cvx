@@ -20,9 +20,24 @@ CREATE TABLE IF NOT EXISTS generations (
   created_at TEXT NOT NULL, tailored_json TEXT NOT NULL, pdf BLOB NOT NULL,
   cover_pdf BLOB, cover_filename TEXT
 );
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, provider TEXT NOT NULL, provider_id TEXT NOT NULL,
+  email TEXT NOT NULL, name TEXT NOT NULL, created_at TEXT NOT NULL,
+  UNIQUE(provider, provider_id)
+);
 `
 
 type Store struct{ db *sql.DB }
+
+// User is one authenticated identity, tied to a single OAuth provider
+// account (or the "dev" pseudo-provider in CVX_DEV_USER mode).
+type User struct {
+	ID         int64  `json:"id"`
+	Provider   string `json:"provider"`
+	ProviderID string `json:"providerId"`
+	Email      string `json:"email"`
+	Name       string `json:"name"`
+}
 
 type GenerationMeta struct {
 	ID             string      `json:"id"`
@@ -66,46 +81,69 @@ func Open(path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
-// migrate adds columns introduced after the initial v1 schema to a
-// generations table that predates them, so an existing v1 database (created
-// before cover letters existed) picks up the new columns in place without
-// losing data. Idempotent: it checks PRAGMA table_info before each ALTER
-// TABLE, so running it on every Open (including against a freshly created
-// database, which already has the columns via the schema constant above) is
-// always safe.
-func migrate(db *sql.DB) error {
-	rows, err := db.Query(`PRAGMA table_info(generations)`)
+// tableColumns returns the set of column names on table, via PRAGMA
+// table_info, so migrate can decide which ALTER TABLE statements are still
+// needed.
+func tableColumns(db *sql.DB, table string) (map[string]bool, error) {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	defer rows.Close()
+
 	cols := map[string]bool{}
 	for rows.Next() {
 		var cid, notnull, pk int
 		var name, ctype string
 		var dflt sql.NullString
 		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
-			rows.Close()
-			return err
+			return nil, err
 		}
 		cols[name] = true
 	}
 	if err := rows.Err(); err != nil {
-		return err
+		return nil, err
 	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
+	return cols, nil
+}
 
-	if !cols["cover_pdf"] {
+// migrate adds columns introduced after the initial v1 schema to tables that
+// predate them, so an existing database picks up new columns in place
+// without losing data. Idempotent: it checks PRAGMA table_info before each
+// ALTER TABLE, so running it on every Open (including against a freshly
+// created database, which already has the columns via the schema constant
+// above) is always safe.
+func migrate(db *sql.DB) error {
+	genCols, err := tableColumns(db, "generations")
+	if err != nil {
+		return err
+	}
+	if !genCols["cover_pdf"] {
 		if _, err := db.Exec(`ALTER TABLE generations ADD COLUMN cover_pdf BLOB`); err != nil {
 			return err
 		}
 	}
-	if !cols["cover_filename"] {
+	if !genCols["cover_filename"] {
 		if _, err := db.Exec(`ALTER TABLE generations ADD COLUMN cover_filename TEXT`); err != nil {
 			return err
 		}
 	}
+	if !genCols["user_id"] {
+		if _, err := db.Exec(`ALTER TABLE generations ADD COLUMN user_id INTEGER`); err != nil {
+			return err
+		}
+	}
+
+	profileCols, err := tableColumns(db, "profile")
+	if err != nil {
+		return err
+	}
+	if !profileCols["user_id"] {
+		if _, err := db.Exec(`ALTER TABLE profile ADD COLUMN user_id INTEGER`); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -354,4 +392,74 @@ func (s *Store) GapSummary() ([]GapTrend, int, error) {
 	})
 
 	return out, total, nil
+}
+
+// UpsertUser fetches the user identified by (provider, providerID), or
+// creates one if none exists yet. Email/name passed on a repeat call for an
+// existing user are ignored — the stored identity from first sign-in wins.
+//
+// The very first user ever created (i.e. the users table was empty before
+// this insert) adopts every legacy profile/generations row that predates
+// per-user data (user_id IS NULL), so an existing single-user install keeps
+// its data when it upgrades to auth. Later users never trigger this: rows
+// adopted by the first user are no longer NULL, so the WHERE clause matches
+// nothing for anyone after them.
+func (s *Store) UpsertUser(provider, providerID, email, name string) (User, error) {
+	var existing User
+	err := s.db.QueryRow(
+		`SELECT id, provider, provider_id, email, name FROM users WHERE provider = ? AND provider_id = ?`,
+		provider, providerID,
+	).Scan(&existing.ID, &existing.Provider, &existing.ProviderID, &existing.Email, &existing.Name)
+	if err == nil {
+		return existing, nil
+	}
+	if err != sql.ErrNoRows {
+		return User{}, err
+	}
+
+	var userCount int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&userCount); err != nil {
+		return User{}, err
+	}
+	isFirstUser := userCount == 0
+
+	createdAt := time.Now().UTC().Format(time.RFC3339)
+	res, err := s.db.Exec(
+		`INSERT INTO users (provider, provider_id, email, name, created_at) VALUES (?, ?, ?, ?, ?)`,
+		provider, providerID, email, name, createdAt,
+	)
+	if err != nil {
+		return User{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return User{}, err
+	}
+
+	if isFirstUser {
+		if _, err := s.db.Exec(`UPDATE profile SET user_id = ? WHERE user_id IS NULL`, id); err != nil {
+			return User{}, err
+		}
+		if _, err := s.db.Exec(`UPDATE generations SET user_id = ? WHERE user_id IS NULL`, id); err != nil {
+			return User{}, err
+		}
+	}
+
+	return User{ID: id, Provider: provider, ProviderID: providerID, Email: email, Name: name}, nil
+}
+
+// GetUser returns the user with the given id, or (nil, nil) if no such user
+// exists.
+func (s *Store) GetUser(id int64) (*User, error) {
+	var u User
+	err := s.db.QueryRow(
+		`SELECT id, provider, provider_id, email, name FROM users WHERE id = ?`, id,
+	).Scan(&u.ID, &u.Provider, &u.ProviderID, &u.Email, &u.Name)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
 }

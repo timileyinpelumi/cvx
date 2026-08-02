@@ -259,6 +259,165 @@ CREATE TABLE IF NOT EXISTS generations (
 );
 `
 
+func TestUpsertUserInsertsThenFetches(t *testing.T) {
+	s := open(t)
+
+	u, err := s.UpsertUser("google", "g-123", "ada@example.com", "Ada Lovelace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.ID == 0 || u.Provider != "google" || u.ProviderID != "g-123" || u.Email != "ada@example.com" || u.Name != "Ada Lovelace" {
+		t.Fatalf("got %+v", u)
+	}
+
+	// Same (provider, providerID) fetches the same row rather than inserting
+	// a duplicate, even if email/name are passed differently.
+	again, err := s.UpsertUser("google", "g-123", "changed@example.com", "Changed Name")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.ID != u.ID || again.Email != u.Email || again.Name != u.Name {
+		t.Fatalf("want fetch of existing row unchanged, got %+v vs original %+v", again, u)
+	}
+
+	// A different provider (even with the same providerID) is a distinct user.
+	other, err := s.UpsertUser("github", "g-123", "bob@example.com", "Bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other.ID == u.ID {
+		t.Fatalf("want distinct user for different provider, got same id %d", other.ID)
+	}
+}
+
+func TestGetUserAbsentReturnsNilNil(t *testing.T) {
+	s := open(t)
+	u, err := s.GetUser(999)
+	if err != nil || u != nil {
+		t.Fatalf("want nil,nil got %v,%v", u, err)
+	}
+}
+
+func TestGetUserReturnsInsertedUser(t *testing.T) {
+	s := open(t)
+	created, err := s.UpsertUser("google", "g-1", "a@e.com", "A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetUser(created.ID)
+	if err != nil || got == nil {
+		t.Fatalf("got %v, %v", got, err)
+	}
+	if *got != created {
+		t.Fatalf("want %+v, got %+v", created, *got)
+	}
+}
+
+// TestUpsertUserAdoptsLegacyRowsOnFirstUserOnly seeds a profile and a
+// generation the old-fashioned way (before any user exists, so their
+// user_id is NULL), then checks that creating the very first user adopts
+// both rows, and that creating a second user afterwards does NOT re-adopt
+// (the legacy rows stay with the first user).
+func TestUpsertUserAdoptsLegacyRowsOnFirstUserOnly(t *testing.T) {
+	s := open(t)
+
+	prof := model.Profile{Name: "Legacy"}
+	model.AssignIDs(&prof)
+	if err := s.SaveProfile(prof); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SaveGeneration(model.Tailored{TargetRole: "X"}, []byte("pdf"), "x.pdf", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	assertUserID := func(table string, want any) {
+		t.Helper()
+		var got sql.NullInt64
+		if err := s.db.QueryRow(`SELECT user_id FROM ` + table).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		switch w := want.(type) {
+		case nil:
+			if got.Valid {
+				t.Fatalf("%s: want NULL user_id, got %v", table, got.Int64)
+			}
+		case int64:
+			if !got.Valid || got.Int64 != w {
+				t.Fatalf("%s: want user_id %d, got %+v", table, w, got)
+			}
+		}
+	}
+
+	assertUserID("profile", nil)
+	assertUserID("generations", nil)
+
+	first, err := s.UpsertUser("google", "g-1", "first@example.com", "First")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUserID("profile", first.ID)
+	assertUserID("generations", first.ID)
+
+	if _, err := s.UpsertUser("github", "gh-1", "second@example.com", "Second"); err != nil {
+		t.Fatal(err)
+	}
+	// Legacy rows must still belong to the first user, not be re-adopted or
+	// reassigned by the second user's creation.
+	assertUserID("profile", first.ID)
+	assertUserID("generations", first.ID)
+}
+
+func TestMigrationAddsUserIDColumnsIdempotently(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v1-nouserid.db")
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(schema); err != nil {
+		t.Fatal(err)
+	}
+	// Drop back to a schema without user_id by recreating tables the pre-v1.3
+	// way (schema already includes user_id going forward, so simulate an
+	// older DB by using v1Schema plus the cover columns, still missing
+	// user_id on both tables).
+	if _, err := db.Exec(`DROP TABLE profile; DROP TABLE generations;`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+CREATE TABLE profile (id INTEGER PRIMARY KEY CHECK (id = 1), json TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE generations (
+  id TEXT PRIMARY KEY, target_role TEXT NOT NULL, filename TEXT NOT NULL,
+  created_at TEXT NOT NULL, tailored_json TEXT NOT NULL, pdf BLOB NOT NULL,
+  cover_pdf BLOB, cover_filename TEXT
+);`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s1, err := Open(path)
+	if err != nil {
+		t.Fatalf("first reopen (migration) failed: %v", err)
+	}
+	if _, err := s1.UpsertUser("google", "g-1", "a@e.com", "A"); err != nil {
+		t.Fatalf("upsert user after migration failed: %v", err)
+	}
+	if err := s1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s2, err := Open(path)
+	if err != nil {
+		t.Fatalf("second reopen (idempotent migration) failed: %v", err)
+	}
+	defer s2.Close()
+	if _, err := s2.UpsertUser("github", "gh-1", "b@e.com", "B"); err != nil {
+		t.Fatalf("upsert user after second reopen failed: %v", err)
+	}
+}
+
 func TestMigrationAddsCoverColumnsIdempotently(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "v1.db")
 
