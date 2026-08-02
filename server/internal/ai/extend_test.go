@@ -18,7 +18,7 @@ func TestExtendProfileValid(t *testing.T) {
 	p := digitizedSample() // item-0 / item-0-b-0, skills ["Python"]
 	f := &fakeLLM{out: `{"newSkills":["Go"],"newItems":[],"bulletAdditions":[{"itemId":"item-0","bullets":[{"text":"Shipped v2","skills":["Go"]}]}]}`}
 
-	a, err := ExtendProfile(context.Background(), f, p, "Shipped v2 of the engine using Go")
+	a, err := ExtendProfile(context.Background(), f, p, "Shipped v2 of the engine using Go", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestExtendProfileNewItem(t *testing.T) {
 	p := digitizedSample()
 	f := &fakeLLM{out: `{"newSkills":[],"newItems":[{"kind":"project","title":"Side project","organization":"","startDate":"2024-01","endDate":"","bullets":[{"text":"Built a CLI tool","skills":["Rust"]}]}],"bulletAdditions":[]}`}
 
-	a, err := ExtendProfile(context.Background(), f, p, "I also built a CLI tool in Rust on the side")
+	a, err := ExtendProfile(context.Background(), f, p, "I also built a CLI tool in Rust on the side", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestExtendProfileCallShape(t *testing.T) {
 	p := digitizedSample()
 	f := &fakeLLM{out: `{"newSkills":[],"newItems":[],"bulletAdditions":[]}`}
 
-	if _, err := ExtendProfile(context.Background(), f, p, "shipped the v2 launch"); err != nil {
+	if _, err := ExtendProfile(context.Background(), f, p, "shipped the v2 launch", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -98,7 +98,30 @@ func TestExtendProfileSchemaShape(t *testing.T) {
 
 func TestExtendProfileLLMFailure(t *testing.T) {
 	p := digitizedSample()
-	if _, err := ExtendProfile(context.Background(), extendFailingLLM{}, p, "note"); err == nil {
+	if _, err := ExtendProfile(context.Background(), extendFailingLLM{}, p, "note", ""); err == nil {
 		t.Fatal("want error")
+	}
+}
+
+func TestExtendProfileGapContext(t *testing.T) {
+	f := &fakeLLM{out: `{"newSkills":[],"newItems":[],"bulletAdditions":[]}`}
+	p := digitizedSample()
+
+	if _, err := ExtendProfile(context.Background(), f, p, "I used Django on one internal tool", "Django experience — not in profile"); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.blocks) != 3 || !strings.Contains(f.blocks[2].Text, "Django experience") {
+		t.Fatalf("want gap context as third block, got %d blocks", len(f.blocks))
+	}
+	if !strings.Contains(f.system, "Gap context") {
+		t.Fatal("system prompt must carry the targeting rule")
+	}
+
+	f2 := &fakeLLM{out: `{"newSkills":[],"newItems":[],"bulletAdditions":[]}`}
+	if _, err := ExtendProfile(context.Background(), f2, p, "note", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(f2.blocks) != 2 {
+		t.Fatalf("empty context must add no block, got %d", len(f2.blocks))
 	}
 }

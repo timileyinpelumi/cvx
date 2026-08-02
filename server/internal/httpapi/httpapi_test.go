@@ -1094,3 +1094,17 @@ func TestSettingsPreview(t *testing.T) {
 		t.Fatalf("implausible preview pdf: %d bytes", rec.Body.Len())
 	}
 }
+
+func TestExtendWithContext(t *testing.T) {
+	_, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	body, _ := json.Marshal(extendRequest{Note: "I used Django on an internal tool", Context: "Django experience — not in profile"})
+	req := httptest.NewRequest(http.MethodPost, "/api/profile/extend", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("extend with context: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+}

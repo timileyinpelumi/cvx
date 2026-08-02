@@ -138,7 +138,8 @@ func (s *Server) postProfile(c echo.Context) error {
 }
 
 type extendRequest struct {
-	Note string `json:"note"`
+	Note    string `json:"note"`
+	Context string `json:"context"`
 }
 
 // postProfileExtend converts a typed note into profile additions via the
@@ -168,7 +169,7 @@ func (s *Server) postProfileExtend(c echo.Context) error {
 		return errJSON(c, http.StatusConflict, "no profile")
 	}
 
-	additions, err := ai.ExtendProfile(c.Request().Context(), s.LLM, *p, req.Note)
+	additions, err := ai.ExtendProfile(c.Request().Context(), s.LLM, *p, req.Note, req.Context)
 	if err != nil {
 		slog.Error("profile extend failed", "err", err)
 		return errJSON(c, http.StatusBadGateway, err.Error())

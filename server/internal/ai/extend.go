@@ -23,7 +23,15 @@ Hard rules:
   note names the technology, tool, or method). Never infer a skill that is
   merely plausible.
 - Leave newSkills, newItems, or bulletAdditions as empty arrays (not
-  omitted) when the note has nothing to add for that category.`
+  omitted) when the note has nothing to add for that category.
+- A separate "Gap context" block may be present: it names a requirement
+  from a recent generation that the user is answering. Use it only to
+  choose wording and placement (which existing item the addition fits,
+  which of the note's facts matter most, the requirement's own terms for
+  what the note states). It is NOT content: never add a skill, bullet, or
+  item that the note itself does not state, even when the context names
+  it. A note that does not support the requirement produces additions for
+  what it does support, or nothing at all.`
 
 // ExtendProfile turns a candidate's typed note into ProfileAdditions:
 // derived new skills, whole new items, and/or bullets to append to items
@@ -31,7 +39,7 @@ Hard rules:
 // here (the LLM proposes content, never ids) — model.MergeAdditions is what
 // enforces that any referenced item id actually exists before anything is
 // written to the profile.
-func ExtendProfile(ctx context.Context, llm LLM, p model.Profile, note string) (model.ProfileAdditions, error) {
+func ExtendProfile(ctx context.Context, llm LLM, p model.Profile, note string, gapContext string) (model.ProfileAdditions, error) {
 	profileJSON, err := json.Marshal(p)
 	if err != nil {
 		return model.ProfileAdditions{}, fmt.Errorf("extend profile: marshal profile: %w", err)
@@ -40,6 +48,9 @@ func ExtendProfile(ctx context.Context, llm LLM, p model.Profile, note string) (
 	blocks := []ContentBlock{
 		{Text: fmt.Sprintf("Profile JSON:\n%s", profileJSON)},
 		{Text: fmt.Sprintf("Note:\n%s", note)},
+	}
+	if gapContext != "" {
+		blocks = append(blocks, ContentBlock{Text: fmt.Sprintf("Gap context (the user is answering this gap):\n%s", gapContext)})
 	}
 
 	raw, err := llm.GenerateJSON(ctx, extendProfileSystemPrompt, blocks, profileAdditionsSchema)
