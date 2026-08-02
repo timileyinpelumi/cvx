@@ -127,7 +127,9 @@ export default function Home() {
           </h1>
           <Stitch width={60} className="masthead-stitch" />
         </div>
-        {navigating ? <Nav view={view} onChange={setView} /> : null}
+        {navigating ? (
+          <Nav view={view} onChange={setView} variant="rail" />
+        ) : null}
       </header>
 
       {!navigating ? (
@@ -175,6 +177,8 @@ export default function Home() {
           />
         ) : null}
       </main>
+
+      {navigating ? <Nav view={view} onChange={setView} variant="bar" /> : null}
     </div>
   );
 }

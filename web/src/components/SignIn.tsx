@@ -87,6 +87,9 @@ export function SignIn() {
   return (
     <div className="signin">
       <h2 className="signin-heading">Sign in to cvx</h2>
+      <p className="signin-sub">
+        Your profile and generations live with the account you choose.
+      </p>
 
       <div className="signin-providers">
         {usable.map((provider) => (

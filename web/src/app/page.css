@@ -64,73 +64,84 @@
 
 /* ------------------------------------------------------------------ nav -- */
 
-.nav-menu {
-  position: relative;
+/* Bottom tab bar: the app's persistent navigation. Flat paper surface with
+   a hairline top edge; the current view is chalk. */
+.tabbar {
+  display: flex;
   flex: 0 0 auto;
+  background: var(--paper);
+  border-top: 1px solid var(--edge);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
-.nav-trigger {
-  display: inline-flex;
+.tabbar-item {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
+  gap: 4px;
+  min-height: 56px;
   padding: 0;
   background: none;
   border: 0;
-  border-radius: var(--radius-control);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
   color: var(--muted);
   cursor: pointer;
   transition: color 120ms ease;
 }
 
-.nav-trigger:hover {
+.tabbar-item:hover {
   color: var(--ink);
 }
 
-.nav-trigger[aria-expanded="true"] {
+.tabbar-item:focus-visible {
+  outline-offset: -2px;
+}
+
+.tabbar-item.is-current {
   color: var(--chalk);
 }
 
-/* Flat panel, not a card: paper surface and a hairline edge are enough to
-   lift it off the content. */
-.nav-pop {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  min-width: 172px;
-  padding: 4px 0;
-  background: var(--paper);
-  border: 1px solid var(--edge);
-  border-radius: var(--radius-control);
+/* Desktop swaps the bottom bar for an icon rail in the masthead. */
+.iconrail {
+  display: none;
 }
 
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 40px;
-  padding: 0 14px;
-  background: none;
-  border: 0;
-  font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ink);
-  text-align: left;
-  cursor: pointer;
-}
+@media (min-width: 768px) {
+  .tabbar {
+    display: none;
+  }
 
-.nav-item:hover {
-  background: color-mix(in srgb, var(--chalk) 8%, transparent);
-}
+  .iconrail {
+    display: flex;
+    gap: 4px;
+  }
 
-.nav-item.is-current {
-  color: var(--chalk);
-  background: color-mix(in srgb, var(--chalk) 10%, transparent);
+  .iconrail-item {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: var(--radius-control);
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 120ms ease;
+  }
+
+  .iconrail-item:hover {
+    color: var(--ink);
+  }
+
+  .iconrail-item.is-current {
+    color: var(--chalk);
+  }
 }
 
 /* ---------------------------------------------------------------- views -- */
@@ -157,7 +168,7 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-bottom: 64px;
+  padding-bottom: 32px;
 }
 
 .tailor {
@@ -271,12 +282,9 @@
   overflow-wrap: anywhere;
 }
 
-/* --------------------------------------------------- uploader / sign-in -- */
+/* --------------------------------------------------------------- uploader -- */
 
-/* The two entry screens share one card treatment: whichever you land on, the
-   first thing cvx shows you is a heading and an action. */
-.uploader,
-.signin {
+.uploader {
   padding: 20px;
   background: var(--card);
   border: 1px solid var(--edge);
@@ -310,8 +318,7 @@
 }
 
 @media (min-width: 481px) {
-  .uploader,
-  .signin {
+  .uploader {
     padding: 24px;
   }
 
@@ -322,8 +329,7 @@
 }
 
 @media (min-width: 768px) {
-  .uploader,
-  .signin {
+  .uploader {
     padding: 32px;
   }
 
@@ -334,6 +340,25 @@
 }
 
 /* -------------------------------------------------------------- sign-in -- */
+
+/* Sign-in is the app's front door, not a form: a centered flat block that
+   owns the whole stage. */
+.signin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: 32px 0;
+  text-align: center;
+}
+
+.signin-sub {
+  margin-top: 8px;
+  max-width: 34ch;
+  color: var(--muted);
+  text-wrap: balance;
+}
 
 /* With no provider to offer, the row must not hold space above the notice
    that explains why. */
@@ -346,23 +371,16 @@
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
-  margin-top: 24px;
+  width: 100%;
+  max-width: 320px;
+  margin-top: 28px;
 }
 
-/* Sign-in is the whole screen's one job, so its buttons keep the full 44px
-   target at every width instead of relaxing to 40px like the rest, and stay
-   the card's width so the two providers read as one stack. */
+/* Sign-in is the whole screen's one job, so its buttons keep a generous
+   target and center their label so the two providers read as one stack. */
 .signin-providers .btn {
-  min-height: 44px;
-  justify-content: flex-start;
-}
-
-@media (min-width: 481px) {
-  /* Narrower than the uploader card: a heading and two buttons would rattle
-     around in the full 660px column. */
-  .signin {
-    max-width: 420px;
-  }
+  min-height: 48px;
+  justify-content: center;
 }
 
 /* --------------------------------------------------------- profile view -- */
