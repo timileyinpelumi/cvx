@@ -1,7 +1,10 @@
 package store
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"regexp"
 	"sort"
@@ -18,7 +21,9 @@ CREATE TABLE IF NOT EXISTS profile (id INTEGER PRIMARY KEY AUTOINCREMENT, user_i
 CREATE TABLE IF NOT EXISTS generations (
   id TEXT PRIMARY KEY, target_role TEXT NOT NULL, filename TEXT NOT NULL,
   created_at TEXT NOT NULL, tailored_json TEXT NOT NULL, pdf BLOB NOT NULL,
-  cover_pdf BLOB, cover_filename TEXT
+  cover_pdf BLOB, cover_filename TEXT, role_fingerprint TEXT,
+  pinned INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT '', status_at TEXT
 );
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT, provider TEXT NOT NULL, provider_id TEXT NOT NULL,
@@ -27,7 +32,17 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE TABLE IF NOT EXISTS user_settings (
   user_id INTEGER PRIMARY KEY,
-  resume_style TEXT NOT NULL
+  resume_style TEXT NOT NULL,
+  email_copy INTEGER NOT NULL DEFAULT 1,
+  generation TEXT NOT NULL DEFAULT '{}',
+  recruiter_auto INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS profile_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
+  json TEXT NOT NULL, saved_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS llm_cache (
+  key TEXT PRIMARY KEY, response BLOB NOT NULL, created_at TEXT NOT NULL
 );
 `
 
@@ -51,6 +66,9 @@ type GenerationMeta struct {
 	Gaps           []model.Gap `json:"gaps"`
 	WhatChanged    []string    `json:"whatChanged"`
 	HasCoverLetter bool        `json:"hasCoverLetter"`
+	Pinned         bool        `json:"pinned"`
+	Status         string      `json:"status"`
+	StatusAt       string      `json:"statusAt"`
 }
 
 // GapTrend is one requirement that has come up as a gap across two or more
@@ -137,6 +155,46 @@ func migrate(db *sql.DB) error {
 			return err
 		}
 	}
+	if !genCols["role_fingerprint"] {
+		if _, err := db.Exec(`ALTER TABLE generations ADD COLUMN role_fingerprint TEXT`); err != nil {
+			return err
+		}
+	}
+	if !genCols["pinned"] {
+		if _, err := db.Exec(`ALTER TABLE generations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+	if !genCols["status"] {
+		if _, err := db.Exec(`ALTER TABLE generations ADD COLUMN status TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	if !genCols["status_at"] {
+		if _, err := db.Exec(`ALTER TABLE generations ADD COLUMN status_at TEXT`); err != nil {
+			return err
+		}
+	}
+
+	settingsCols, err := tableColumns(db, "user_settings")
+	if err != nil {
+		return err
+	}
+	if !settingsCols["email_copy"] {
+		if _, err := db.Exec(`ALTER TABLE user_settings ADD COLUMN email_copy INTEGER NOT NULL DEFAULT 1`); err != nil {
+			return err
+		}
+	}
+	if !settingsCols["generation"] {
+		if _, err := db.Exec(`ALTER TABLE user_settings ADD COLUMN generation TEXT NOT NULL DEFAULT '{}'`); err != nil {
+			return err
+		}
+	}
+	if !settingsCols["recruiter_auto"] {
+		if _, err := db.Exec(`ALTER TABLE user_settings ADD COLUMN recruiter_auto INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
 
 	profileCols, err := tableColumns(db, "profile")
 	if err != nil {
@@ -191,17 +249,130 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+// llmCacheTTL bounds how long a cached LLM response is served; PruneLLMCache
+// removes older rows on startup.
+const llmCacheTTL = 14 * 24 * time.Hour
+
+// GetLLMCache returns the cached response for key, or (nil, false) on a miss
+// or an expired row. Errors degrade to a miss: the cache must never take the
+// pipeline down.
+func (s *Store) GetLLMCache(key string) ([]byte, bool) {
+	var resp []byte
+	var createdAt string
+	err := s.db.QueryRow(`SELECT response, created_at FROM llm_cache WHERE key = ?`, key).Scan(&resp, &createdAt)
+	if err != nil {
+		return nil, false
+	}
+	t, err := time.Parse(time.RFC3339, createdAt)
+	if err != nil || time.Since(t) > llmCacheTTL {
+		return nil, false
+	}
+	return resp, true
+}
+
+// PutLLMCache stores response under key, replacing any previous row. Errors
+// are dropped for the same reason GetLLMCache degrades to a miss.
+func (s *Store) PutLLMCache(key string, response []byte) {
+	s.db.Exec(
+		`INSERT INTO llm_cache (key, response, created_at) VALUES (?, ?, ?)
+		 ON CONFLICT(key) DO UPDATE SET response = excluded.response, created_at = excluded.created_at`,
+		key, response, time.Now().UTC().Format(time.RFC3339),
+	)
+}
+
+// PruneLLMCache deletes rows past the TTL. Called once from main on startup.
+func (s *Store) PruneLLMCache() {
+	cutoff := time.Now().UTC().Add(-llmCacheTTL).Format(time.RFC3339)
+	s.db.Exec(`DELETE FROM llm_cache WHERE created_at < ?`, cutoff)
+}
+
+// profileHistoryCap bounds snapshots per user; older ones are dropped.
+const profileHistoryCap = 20
+
 func (s *Store) SaveProfile(userID int64, p model.Profile) error {
 	b, err := json.Marshal(p)
 	if err != nil {
 		return err
 	}
+
+	// Snapshot the outgoing profile first so any write (upload, extend,
+	// skills edit) can be undone with RestoreProfile.
+	var current string
+	if err := s.db.QueryRow(`SELECT json FROM profile WHERE user_id = ?`, userID).Scan(&current); err == nil {
+		if err := s.snapshotProfile(userID, current); err != nil {
+			return err
+		}
+	} else if err != sql.ErrNoRows {
+		return err
+	}
+
 	_, err = s.db.Exec(
 		`INSERT INTO profile (user_id, json, updated_at) VALUES (?, ?, ?)
 		 ON CONFLICT(user_id) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at`,
 		userID, string(b), time.Now().UTC().Format(time.RFC3339),
 	)
 	return err
+}
+
+func (s *Store) snapshotProfile(userID int64, profileJSON string) error {
+	// Millisecond precision so rapid successive writes keep their order.
+	now := time.Now().UTC().Format("2006-01-02T15:04:05.000Z07:00")
+	if _, err := s.db.Exec(
+		`INSERT INTO profile_history (user_id, json, saved_at) VALUES (?, ?, ?)`,
+		userID, profileJSON, now,
+	); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(
+		`DELETE FROM profile_history WHERE user_id = ? AND id NOT IN
+		 (SELECT id FROM profile_history WHERE user_id = ? ORDER BY id DESC LIMIT ?)`,
+		userID, userID, profileHistoryCap,
+	)
+	return err
+}
+
+// ProfileHistoryInfo reports how many snapshots the user has and when the
+// newest one was taken ("" when none).
+func (s *Store) ProfileHistoryInfo(userID int64) (int, string, error) {
+	var count int
+	var last sql.NullString
+	err := s.db.QueryRow(
+		`SELECT COUNT(*), MAX(saved_at) FROM profile_history WHERE user_id = ?`, userID,
+	).Scan(&count, &last)
+	if err != nil {
+		return 0, "", err
+	}
+	return count, last.String, nil
+}
+
+// RestoreProfile swaps the newest snapshot back in as the live profile. The
+// replaced profile is snapshotted first, so restoring twice toggles between
+// the two most recent states rather than walking further into history.
+func (s *Store) RestoreProfile(userID int64) (*model.Profile, error) {
+	var histID int64
+	var histJSON string
+	err := s.db.QueryRow(
+		`SELECT id, json FROM profile_history WHERE user_id = ? ORDER BY id DESC LIMIT 1`, userID,
+	).Scan(&histID, &histJSON)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var p model.Profile
+	if err := json.Unmarshal([]byte(histJSON), &p); err != nil {
+		return nil, err
+	}
+	if _, err := s.db.Exec(`DELETE FROM profile_history WHERE id = ?`, histID); err != nil {
+		return nil, err
+	}
+	// SaveProfile snapshots the current live profile before overwriting it.
+	if err := s.SaveProfile(userID, p); err != nil {
+		return nil, err
+	}
+	return &p, nil
 }
 
 func (s *Store) LoadProfile(userID int64) (*model.Profile, error) {
@@ -226,17 +397,62 @@ func slug(role string) string {
 	return strings.Trim(nonAlnum.ReplaceAllString(strings.ToLower(role), "-"), "-")
 }
 
+const suffixAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+
+func idSuffix() string {
+	b := make([]byte, 4)
+	if _, err := rand.Read(b); err != nil {
+		return time.Now().UTC().Format("0405.000")
+	}
+	for i := range b {
+		b[i] = suffixAlphabet[int(b[i])%len(suffixAlphabet)]
+	}
+	return string(b)
+}
+
+// generationID is the user-visible handle (it appears in URLs and filenames),
+// so it reads as the role, not a timestamp: "backend-engineer-x7k2".
+func generationID(role string) string {
+	s := slug(role)
+	if s == "" {
+		s = "resume"
+	}
+	return s + "-" + idSuffix()
+}
+
+// RoleFingerprint normalizes a raw role input (the pasted text or link,
+// before any fetching) into a dedupe key: URLs are canonicalized (fragment
+// and trailing slash dropped), text is lowercased with whitespace collapsed.
+func RoleFingerprint(input string) string {
+	s := strings.TrimSpace(input)
+	if strings.HasPrefix(strings.ToLower(s), "http://") || strings.HasPrefix(strings.ToLower(s), "https://") {
+		if i := strings.IndexByte(s, '#'); i >= 0 {
+			s = s[:i]
+		}
+		s = strings.TrimRight(s, "/")
+	} else {
+		s = strings.Join(strings.Fields(strings.ToLower(s)), " ")
+	}
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
+}
+
 // SaveGeneration persists a tailored resume and its rendered PDF, plus an
 // optional cover letter PDF alongside it. coverPDF == nil (or coverFilename
 // == "") means no cover letter was generated for this run; both are stored
 // as SQL NULL in that case rather than empty-but-present values.
-func (s *Store) SaveGeneration(userID int64, t model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (GenerationMeta, error) {
-	id := time.Now().UTC().Format("20060102T150405.000") + "-" + slug(t.TargetRole)
+//
+// A non-empty fingerprint dedupes by job input: when the user already has a
+// generation for the same fingerprint, that row is refreshed in place (same
+// id, so history links keep working) instead of a new row piling up.
+func (s *Store) SaveGeneration(userID int64, t model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string, fingerprint string) (GenerationMeta, error) {
 	b, err := json.Marshal(t)
 	if err != nil {
 		return GenerationMeta{}, err
 	}
-	createdAt := time.Now().UTC().Format(time.RFC3339)
+	// Millisecond precision: created_at is the sort key (ids are random-suffixed
+	// slugs), and same-second saves must still order.
+	createdAt := time.Now().UTC().Format("2006-01-02T15:04:05.000Z07:00")
 
 	var coverFilenameArg any
 	if coverFilename != "" {
@@ -246,28 +462,65 @@ func (s *Store) SaveGeneration(userID int64, t model.Tailored, pdf []byte, filen
 	if coverPDF != nil {
 		coverPDFArg = coverPDF
 	}
+	meta := func(id string) GenerationMeta {
+		return GenerationMeta{
+			ID:             id,
+			TargetRole:     t.TargetRole,
+			Filename:       filename,
+			CreatedAt:      createdAt,
+			Gaps:           model.NonNil(t.Gaps),
+			WhatChanged:    model.NonNil(t.WhatChanged),
+			HasCoverLetter: coverFilename != "",
+		}
+	}
 
-	_, err = s.db.Exec(
-		`INSERT INTO generations (id, target_role, filename, created_at, tailored_json, pdf, cover_pdf, cover_filename, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, t.TargetRole, filename, createdAt, string(b), pdf, coverPDFArg, coverFilenameArg, userID,
-	)
-	if err != nil {
+	if fingerprint != "" {
+		var existingID string
+		err := s.db.QueryRow(
+			`SELECT id FROM generations WHERE user_id = ? AND role_fingerprint = ?`,
+			userID, fingerprint,
+		).Scan(&existingID)
+		if err == nil {
+			_, err = s.db.Exec(
+				`UPDATE generations SET target_role = ?, filename = ?, created_at = ?, tailored_json = ?, pdf = ?, cover_pdf = ?, cover_filename = ? WHERE id = ?`,
+				t.TargetRole, filename, createdAt, string(b), pdf, coverPDFArg, coverFilenameArg, existingID,
+			)
+			if err != nil {
+				return GenerationMeta{}, err
+			}
+			return meta(existingID), nil
+		}
+		if err != sql.ErrNoRows {
+			return GenerationMeta{}, err
+		}
+	}
+
+	id := generationID(t.TargetRole)
+	var fingerprintArg any
+	if fingerprint != "" {
+		fingerprintArg = fingerprint
+	}
+	// The 4-char suffix can collide on the same role slug; regenerate and retry.
+	for attempt := 0; ; attempt++ {
+		_, err = s.db.Exec(
+			`INSERT INTO generations (id, target_role, filename, created_at, tailored_json, pdf, cover_pdf, cover_filename, user_id, role_fingerprint) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, t.TargetRole, filename, createdAt, string(b), pdf, coverPDFArg, coverFilenameArg, userID, fingerprintArg,
+		)
+		if err == nil {
+			break
+		}
+		if attempt < 3 && strings.Contains(err.Error(), "UNIQUE constraint failed: generations.id") {
+			id = generationID(t.TargetRole)
+			continue
+		}
 		return GenerationMeta{}, err
 	}
-	return GenerationMeta{
-		ID:             id,
-		TargetRole:     t.TargetRole,
-		Filename:       filename,
-		CreatedAt:      createdAt,
-		Gaps:           model.NonNil(t.Gaps),
-		WhatChanged:    model.NonNil(t.WhatChanged),
-		HasCoverLetter: coverFilename != "",
-	}, nil
+	return meta(id), nil
 }
 
 func (s *Store) ListGenerations(userID int64) ([]GenerationMeta, error) {
 	rows, err := s.db.Query(
-		`SELECT id, target_role, filename, created_at, tailored_json, cover_filename FROM generations WHERE user_id = ? ORDER BY id DESC`,
+		`SELECT id, target_role, filename, created_at, tailored_json, cover_filename, pinned, status, status_at FROM generations WHERE user_id = ? ORDER BY pinned DESC, created_at DESC, id DESC`,
 		userID,
 	)
 	if err != nil {
@@ -279,10 +532,13 @@ func (s *Store) ListGenerations(userID int64) ([]GenerationMeta, error) {
 	for rows.Next() {
 		var m GenerationMeta
 		var raw string
-		var coverFilename sql.NullString
-		if err := rows.Scan(&m.ID, &m.TargetRole, &m.Filename, &m.CreatedAt, &raw, &coverFilename); err != nil {
+		var coverFilename, statusAt sql.NullString
+		var pinned int
+		if err := rows.Scan(&m.ID, &m.TargetRole, &m.Filename, &m.CreatedAt, &raw, &coverFilename, &pinned, &m.Status, &statusAt); err != nil {
 			return nil, err
 		}
+		m.Pinned = pinned != 0
+		m.StatusAt = statusAt.String
 		var t model.Tailored
 		if err := json.Unmarshal([]byte(raw), &t); err != nil {
 			return nil, err
@@ -319,6 +575,165 @@ func (s *Store) SaveResumeStyle(userID int64, style []byte) error {
 		userID, string(style),
 	)
 	return err
+}
+
+// GetGenerationParams returns the user's saved writing knobs JSON, or
+// (nil, nil) when they have never saved settings.
+func (s *Store) GetGenerationParams(userID int64) ([]byte, error) {
+	var raw string
+	err := s.db.QueryRow(`SELECT generation FROM user_settings WHERE user_id = ?`, userID).Scan(&raw)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return []byte(raw), nil
+}
+
+func (s *Store) SaveGenerationParams(userID int64, params []byte) error {
+	_, err := s.db.Exec(
+		`INSERT INTO user_settings (user_id, resume_style, generation) VALUES (?, '{}', ?)
+		 ON CONFLICT(user_id) DO UPDATE SET generation = excluded.generation`,
+		userID, string(params),
+	)
+	return err
+}
+
+// GetRecruiterAuto reports whether every compose should request the
+// forwardable recruiter email by default. Defaults to false.
+func (s *Store) GetRecruiterAuto(userID int64) (bool, error) {
+	var v int
+	err := s.db.QueryRow(`SELECT recruiter_auto FROM user_settings WHERE user_id = ?`, userID).Scan(&v)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return v != 0, nil
+}
+
+func (s *Store) SaveRecruiterAuto(userID int64, on bool) error {
+	v := 0
+	if on {
+		v = 1
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO user_settings (user_id, resume_style, recruiter_auto) VALUES (?, '{}', ?)
+		 ON CONFLICT(user_id) DO UPDATE SET recruiter_auto = excluded.recruiter_auto`,
+		userID, v,
+	)
+	return err
+}
+
+// GetEmailCopy reports whether the user wants each generated resume emailed
+// to them. Defaults to true for users who have never saved settings.
+func (s *Store) GetEmailCopy(userID int64) (bool, error) {
+	var v int
+	err := s.db.QueryRow(`SELECT email_copy FROM user_settings WHERE user_id = ?`, userID).Scan(&v)
+	if err == sql.ErrNoRows {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return v != 0, nil
+}
+
+// SaveEmailCopy stores the email-copy preference, creating the settings row
+// (with the default style JSON) when the user has never saved settings.
+func (s *Store) SaveEmailCopy(userID int64, on bool) error {
+	v := 0
+	if on {
+		v = 1
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO user_settings (user_id, resume_style, email_copy) VALUES (?, '{}', ?)
+		 ON CONFLICT(user_id) DO UPDATE SET email_copy = excluded.email_copy`,
+		userID, v,
+	)
+	return err
+}
+
+// GenerationStatuses is the set SetGenerationStatus accepts; "" clears the
+// status.
+var GenerationStatuses = map[string]bool{"": true, "sent": true, "interviewing": true, "rejected": true, "offer": true}
+
+// GetGenerationTailored returns the stored tailored content for one
+// generation owned by userID; ok=false when no such row.
+func (s *Store) GetGenerationTailored(userID int64, id string) (model.Tailored, bool, error) {
+	var raw string
+	err := s.db.QueryRow(`SELECT tailored_json FROM generations WHERE id = ? AND user_id = ?`, id, userID).Scan(&raw)
+	if err == sql.ErrNoRows {
+		return model.Tailored{}, false, nil
+	}
+	if err != nil {
+		return model.Tailored{}, false, err
+	}
+	var t model.Tailored
+	if err := json.Unmarshal([]byte(raw), &t); err != nil {
+		return model.Tailored{}, false, err
+	}
+	return t, true, nil
+}
+
+// UpdateGenerationContent replaces one generation's tailored content and
+// rendered PDF after an edit, keeping id, filename, cover letter, pin, and
+// status. Reports whether a row matched.
+func (s *Store) UpdateGenerationContent(userID int64, id string, t model.Tailored, pdf []byte) (bool, error) {
+	b, err := json.Marshal(t)
+	if err != nil {
+		return false, err
+	}
+	res, err := s.db.Exec(
+		`UPDATE generations SET target_role = ?, tailored_json = ?, pdf = ? WHERE id = ? AND user_id = ?`,
+		t.TargetRole, string(b), pdf, id, userID,
+	)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// SetGenerationStatus records where the application stands, stamping when the
+// status changed ("" clears both). Reports whether a row matched.
+func (s *Store) SetGenerationStatus(userID int64, id string, status string) (bool, error) {
+	var statusAt any
+	if status != "" {
+		statusAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	res, err := s.db.Exec(`UPDATE generations SET status = ?, status_at = ? WHERE id = ? AND user_id = ?`, status, statusAt, id, userID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// SetGenerationPinned pins or unpins one generation owned by userID,
+// reporting whether a row matched.
+func (s *Store) SetGenerationPinned(userID int64, id string, pinned bool) (bool, error) {
+	v := 0
+	if pinned {
+		v = 1
+	}
+	res, err := s.db.Exec(`UPDATE generations SET pinned = ? WHERE id = ? AND user_id = ?`, v, id, userID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
 }
 
 // DeleteGeneration removes one generation owned by userID, reporting
@@ -383,7 +798,7 @@ func normalizeRequirement(s string) string {
 // sorted by Count descending then Requirement ascending. Requirement and
 // LastEvidence are taken from the most recent generation in each group.
 func (s *Store) GapSummary(userID int64) ([]GapTrend, int, error) {
-	rows, err := s.db.Query(`SELECT tailored_json FROM generations WHERE user_id = ? ORDER BY id ASC`, userID)
+	rows, err := s.db.Query(`SELECT tailored_json FROM generations WHERE user_id = ? ORDER BY created_at ASC, id ASC`, userID)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -105,11 +105,121 @@ func ValidateTailored(p Profile, t Tailored) error {
 	return nil
 }
 
+// The resume content standard: hard ceilings NormalizeTailored clamps every
+// generation to, whatever the LLM emitted. Lists are relevance-ordered by the
+// tailor contract, so trimming from the bottom always drops the weakest.
+const (
+	maxResumeItems   = 5
+	maxItemBullets   = 4
+	maxHeadlineChars = 110
+	maxSummaryWords  = 75
+	maxResumeSkills  = 14
+	maxWhatChanged   = 4
+	maxGapsListed    = 6
+)
+
+// NormalizeTailored clamps t to the content standard in place: item, bullet,
+// skill, gap, and whatChanged counts, headline length (cut at a word
+// boundary), and summary length (cut at a sentence boundary when one exists).
+// Empty sections are dropped.
+func NormalizeTailored(t *Tailored) {
+	itemsLeft := maxResumeItems
+	sections := t.Sections[:0]
+	for _, s := range t.Sections {
+		if len(s.Items) > itemsLeft {
+			s.Items = s.Items[:itemsLeft]
+		}
+		itemsLeft -= len(s.Items)
+		for i := range s.Items {
+			if len(s.Items[i].Bullets) > maxItemBullets {
+				s.Items[i].Bullets = s.Items[i].Bullets[:maxItemBullets]
+			}
+		}
+		if len(s.Items) > 0 {
+			sections = append(sections, s)
+		}
+	}
+	t.Sections = sections
+
+	t.Headline = cutAtWord(t.Headline, maxHeadlineChars)
+	t.Summary = cutAtSentence(t.Summary, maxSummaryWords)
+
+	if len(t.SelectedSkills) > maxResumeSkills {
+		t.SelectedSkills = t.SelectedSkills[:maxResumeSkills]
+	}
+	if len(t.WhatChanged) > maxWhatChanged {
+		t.WhatChanged = t.WhatChanged[:maxWhatChanged]
+	}
+	if len(t.Gaps) > maxGapsListed {
+		t.Gaps = t.Gaps[:maxGapsListed]
+	}
+}
+
+// cutAtWord returns s unchanged when it fits in maxChars, else the longest
+// prefix that ends on a whole word.
+func cutAtWord(s string, maxChars int) string {
+	if len(s) <= maxChars {
+		return s
+	}
+	cut := s[:maxChars]
+	if i := strings.LastIndexByte(cut, ' '); i > 0 {
+		cut = cut[:i]
+	}
+	return strings.TrimRight(cut, " ,;:-")
+}
+
+// cutAtSentence returns s unchanged when it fits in maxWords, else the
+// longest run of whole sentences that fits, falling back to a word cut when
+// the first sentence alone is over the limit.
+func cutAtSentence(s string, maxWords int) string {
+	words := strings.Fields(s)
+	if len(words) <= maxWords {
+		return s
+	}
+	kept := strings.Join(words[:maxWords], " ")
+	if i := strings.LastIndexAny(kept, ".!?"); i > 0 {
+		return kept[:i+1]
+	}
+	return kept + "."
+}
+
 var nonAlnum = regexp.MustCompile(`[^a-zA-Z0-9]+`)
 
-func Filename(name, role string) string {
-	clean := func(s string) string { return strings.Trim(nonAlnum.ReplaceAllString(s, "_"), "_") }
-	return clean(name) + "_" + clean(role) + ".pdf"
+// Filename caps: real names and LLM-authored role titles both run long, and
+// the download name has to stay scannable in a file manager.
+const (
+	filenameNameCap = 20
+	filenameRoleCap = 28
+)
+
+// filenameBase builds "Name_Job_Title_1234": name and role cleaned to
+// Title_Cased underscore-separated words, each part capped at a word
+// boundary, plus the numeric id that keeps regenerated files apart.
+func filenameBase(name, role string, id int) string {
+	clean := func(s string, cap int) string {
+		s = strings.Trim(nonAlnum.ReplaceAllString(s, "_"), "_")
+		words := strings.Split(s, "_")
+		for i, w := range words {
+			if w == "" {
+				continue
+			}
+			words[i] = strings.ToUpper(w[:1]) + strings.ToLower(w[1:])
+		}
+		s = strings.Join(words, "_")
+		if len(s) > cap {
+			cut := s[:cap]
+			if i := strings.LastIndexByte(cut, '_'); i > 0 {
+				cut = cut[:i]
+			}
+			s = cut
+		}
+		return s
+	}
+	return fmt.Sprintf("%s_%s_%04d", clean(name, filenameNameCap), clean(role, filenameRoleCap), id)
+}
+
+func Filename(name, role string, id int) string {
+	return filenameBase(name, role, id) + ".pdf"
 }
 
 // CoverLetter is an optional second document generated alongside the
@@ -127,9 +237,8 @@ type RecruiterEmail struct {
 	Closing    string   `json:"closing"`
 }
 
-func CoverFilename(name, role string) string {
-	clean := func(s string) string { return strings.Trim(nonAlnum.ReplaceAllString(s, "_"), "_") }
-	return clean(name) + "_" + clean(role) + "_Cover_Letter.pdf"
+func CoverFilename(name, role string, id int) string {
+	return filenameBase(name, role, id) + "_Cover.pdf"
 }
 
 // BulletDraft and ItemDraft mirror Bullet and Item minus id fields — the LLM

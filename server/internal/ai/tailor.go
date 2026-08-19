@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"cvx/internal/model"
 )
@@ -101,10 +102,46 @@ Hard rules:
 - "whatChanged" must list 2-4 bullets summarizing what you changed and why.
 - The result must fit on one page: be concise.`
 
+// TailorOptions are the user's writing knobs. The zero value (or the named
+// defaults) adds nothing to the request, so the default pipeline stays
+// byte-identical to the eval-gated prompt.
+type TailorOptions struct {
+	Tone    string // "plain" (default) | "confident"
+	Summary string // "standard" (default) | "short" | "none"
+	Bullets string // "full" (default) | "lean"
+}
+
+// instructions renders the non-default knobs as one adjustments block, or ""
+// when everything is at its default.
+func (o TailorOptions) instructions() string {
+	var lines []string
+	if o.Tone == "confident" {
+		lines = append(lines, "Voice: write the bullets, headline, and summary with direct, assertive verb choices. Every evidence rule still applies; confidence changes word choice, never claims.")
+	}
+	switch o.Summary {
+	case "short":
+		lines = append(lines, "Summary: keep the summary to at most 35 words.")
+	case "none":
+		lines = append(lines, `Summary: output an empty string "" for the summary; the candidate wants no summary section.`)
+	}
+	if o.Bullets == "lean" {
+		lines = append(lines, "Bullets: prefer 2 or 3 bullets per item, keeping only the strongest evidence.")
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "Adjustments requested by the candidate:\n- " + strings.Join(lines, "\n- ")
+}
+
 // Tailor selects, reorders, and rephrases profile content for roleInput,
 // citing exact profile ids. model.ValidateTailored rejects fabricated ids
 // before the result is returned.
 func Tailor(ctx context.Context, llm LLM, p model.Profile, roleInput string) (model.Tailored, error) {
+	return TailorWithOptions(ctx, llm, p, roleInput, TailorOptions{})
+}
+
+// TailorWithOptions is Tailor with the user's writing knobs applied.
+func TailorWithOptions(ctx context.Context, llm LLM, p model.Profile, roleInput string, opts TailorOptions) (model.Tailored, error) {
 	profileJSON, err := json.Marshal(p)
 	if err != nil {
 		return model.Tailored{}, fmt.Errorf("tailor: marshal profile: %w", err)
@@ -113,6 +150,9 @@ func Tailor(ctx context.Context, llm LLM, p model.Profile, roleInput string) (mo
 	blocks := []ContentBlock{
 		{Text: fmt.Sprintf("Profile JSON:\n%s", profileJSON)},
 		{Text: fmt.Sprintf("Target role:\n%s", roleInput)},
+	}
+	if extra := opts.instructions(); extra != "" {
+		blocks = append(blocks, ContentBlock{Text: extra})
 	}
 
 	raw, err := llm.GenerateJSON(ctx, tailorSystemPrompt, blocks, tailoredSchema)

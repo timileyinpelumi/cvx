@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"cvx/internal/model"
 )
@@ -62,15 +63,26 @@ func CoverLetter(ctx context.Context, llm LLM, p model.Profile, roleInput string
 		{Text: fmt.Sprintf("Target role:\n%s", roleInput)},
 	}
 
-	raw, err := llm.GenerateJSON(ctx, coverLetterSystemPrompt, blocks, coverLetterSchema)
-	if err != nil {
-		return model.CoverLetter{}, fmt.Errorf("cover letter: %w", err)
-	}
+	// Bounded QC loop: exactly one generation plus at most one corrective
+	// rewrite — never a retry-until-clean loop; a second bad draft is a hard
+	// error the caller already degrades on.
+	var violations []string
+	for attempt := 0; attempt < 2; attempt++ {
+		raw, err := llm.GenerateJSON(ctx, coverLetterSystemPrompt, blocks, coverLetterSchema)
+		if err != nil {
+			return model.CoverLetter{}, fmt.Errorf("cover letter: %w", err)
+		}
 
-	var cl model.CoverLetter
-	if err := json.Unmarshal(raw, &cl); err != nil {
-		return model.CoverLetter{}, fmt.Errorf("cover letter: unmarshal response: %w", err)
-	}
+		var cl model.CoverLetter
+		if err := json.Unmarshal(raw, &cl); err != nil {
+			return model.CoverLetter{}, fmt.Errorf("cover letter: unmarshal response: %w", err)
+		}
 
-	return cl, nil
+		violations = checkCoverLetter(cl)
+		if len(violations) == 0 {
+			return cl, nil
+		}
+		blocks = append(blocks, ContentBlock{Text: "Previous draft:\n" + string(raw)}, rewriteBlock(violations))
+	}
+	return model.CoverLetter{}, fmt.Errorf("cover letter failed quality checks: %s", strings.Join(violations, "; "))
 }

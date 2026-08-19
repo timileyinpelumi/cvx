@@ -10,6 +10,13 @@ import (
 
 const digitizePrompt = `You extract a candidate's resume/CV into structured JSON.
 
+First decide whether the document is actually a resume or CV: a document
+presenting a person's work history, skills, or qualifications. If it is not
+(an invoice, an article, a slide deck, a form, arbitrary text), set isResume
+to false, put one short sentence in notResumeReason, and use empty strings
+and empty arrays for every other field. Otherwise set isResume to true and
+notResumeReason to "".
+
 Rules:
 - Extract EVERYTHING present in the document. Invent nothing.
 - If a field is not stated in the document, use an empty string "" (or an
@@ -38,6 +45,9 @@ type draftItem struct {
 }
 
 type draftProfile struct {
+	IsResume        bool   `json:"isResume"`
+	NotResumeReason string `json:"notResumeReason"`
+
 	Name     string       `json:"name"`
 	Email    string       `json:"email"`
 	Phone    string       `json:"phone"`
@@ -59,6 +69,9 @@ func Digitize(ctx context.Context, llm LLM, pdf []byte) (model.Profile, error) {
 	var d draftProfile
 	if err := json.Unmarshal(raw, &d); err != nil {
 		return model.Profile{}, fmt.Errorf("digitize: unmarshal response: %w", err)
+	}
+	if !d.IsResume {
+		return model.Profile{}, fmt.Errorf("%w: %s", ErrNotResume, d.NotResumeReason)
 	}
 
 	p := model.Profile{

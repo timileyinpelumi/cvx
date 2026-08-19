@@ -55,28 +55,29 @@ func registerFonts(pdf *fpdf.Fpdf) {
 	pdf.AddUTF8FontFromBytes(serifFamily, "B", serifSemiboldFont)
 }
 
+// Page-fill targets: a resume should read as a full page. Below minFill the
+// spacing is stretched toward targetFill; past one page it is tightened once.
+const (
+	minFill    = 0.90
+	targetFill = 0.95
+)
+
 // Render typesets p and t into a PDF in the given style and returns the raw
-// document bytes.
+// document bytes. Layout runs as a bounded measure-and-refit: one measuring
+// pass, at most one refit pass (stretch under-full pages, tighten overflow) —
+// never a convergence loop, so rendering cost is capped at two typesets.
 func Render(p model.Profile, t model.Tailored, style Style) ([]byte, error) {
 	cfg := resolveTheme(style)
+	skillsFirst := style.Normalized().SkillsFirst
 
-	pdf := fpdf.New("P", "mm", "A4", "")
-	pdf.SetMargins(cfg.marginSide, cfg.marginTop, cfg.marginSide)
-	pdf.SetAutoPageBreak(true, cfg.marginBottom)
+	pdf, pages, fill := typeset(p, t, cfg, skillsFirst)
 
-	registerFonts(pdf)
-
-	pdf.AddPage()
-
-	renderHeader(pdf, cfg, p, t)
-	if style.Normalized().SkillsFirst {
-		renderSkillsSection(pdf, cfg, t.SelectedSkills)
-	}
-	for _, section := range t.Sections {
-		renderSection(pdf, cfg, section)
-	}
-	if !style.Normalized().SkillsFirst {
-		renderSkillsSection(pdf, cfg, t.SelectedSkills)
+	if pages == 1 && fill < minFill {
+		pdf, _, _ = typeset(p, t, stretched(cfg, fill), skillsFirst)
+	} else if pages > 1 {
+		if pdf2, pages2, _ := typeset(p, t, tightened(cfg), skillsFirst); pages2 < pages {
+			pdf = pdf2
+		}
 	}
 
 	if err := pdf.Error(); err != nil {
@@ -88,6 +89,61 @@ func Render(p model.Profile, t model.Tailored, style Style) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// typeset draws the whole document with cfg and reports how many pages it
+// took and, for the last page, how much of the usable height the content
+// covers.
+func typeset(p model.Profile, t model.Tailored, cfg theme, skillsFirst bool) (*fpdf.Fpdf, int, float64) {
+	pdf := fpdf.New("P", "mm", "A4", "")
+	pdf.SetMargins(cfg.marginSide, cfg.marginTop, cfg.marginSide)
+	pdf.SetAutoPageBreak(true, cfg.marginBottom)
+
+	registerFonts(pdf)
+
+	pdf.AddPage()
+
+	renderHeader(pdf, cfg, p, t)
+	if skillsFirst {
+		renderSkillsSection(pdf, cfg, t.SelectedSkills)
+	}
+	for _, section := range t.Sections {
+		renderSection(pdf, cfg, section)
+	}
+	if !skillsFirst {
+		renderSkillsSection(pdf, cfg, t.SelectedSkills)
+	}
+
+	_, pageH := pdf.GetPageSize()
+	usable := pageH - cfg.marginTop - cfg.marginBottom
+	fill := (pdf.GetY() - cfg.marginTop) / usable
+	return pdf, pdf.PageNo(), fill
+}
+
+// stretched scales leading and the inter-block gaps up toward targetFill.
+// Both scales are capped so a genuinely thin resume fills what looks right
+// rather than turning into scattered lines.
+func stretched(cfg theme, fill float64) theme {
+	if fill <= 0 {
+		return cfg
+	}
+	f := targetFill / fill
+	cfg.leading *= min(1.15, f)
+	gapScale := min(2.2, f)
+	cfg.gapSection *= gapScale
+	cfg.gapItems *= gapScale
+	cfg.gapBullets *= gapScale
+	return cfg
+}
+
+// tightened pulls spacing in one step for content that spilled past a page,
+// mirroring the tight-density ratios without touching font sizes.
+func tightened(cfg theme) theme {
+	cfg.leading *= 0.94
+	cfg.gapSection *= 0.8
+	cfg.gapItems *= 0.8
+	cfg.gapBullets *= 0.8
+	return cfg
 }
 
 func usableWidth(pdf *fpdf.Fpdf) float64 {

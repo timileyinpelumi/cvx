@@ -7,7 +7,7 @@ import (
 )
 
 func TestRecruiterEmail(t *testing.T) {
-	f := &fakeLLM{out: `{"subject":"Application for Backend Engineer","paragraphs":["I am applying for the Backend Engineer role. I built the analytical engine in Go."],"closing":"Best regards,"}`}
+	f := &fakeLLM{out: `{"subject":"Application for Backend Engineer","paragraphs":["I am applying for the Backend Engineer role. At Analytical Engines Co I built the core analytical engine in Go and wrote its first published algorithm. My resume and the details are attached."],"closing":"Best regards,"}`}
 	p := digitizedSample()
 
 	re, err := RecruiterEmail(context.Background(), f, p, "Backend Engineer")

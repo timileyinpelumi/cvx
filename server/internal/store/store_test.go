@@ -132,7 +132,7 @@ func TestGenerationsIsolatedPerUser(t *testing.T) {
 	userB := testUser(t, s, "google", "b-1")
 
 	ta := model.Tailored{TargetRole: "X", Gaps: []model.Gap{{Requirement: "Django", Severity: "missing"}}}
-	metaA, err := s.SaveGeneration(userA, ta, []byte("pdf-a"), "a.pdf", []byte("cover-a"), "a-cover.pdf")
+	metaA, err := s.SaveGeneration(userA, ta, []byte("pdf-a"), "a.pdf", []byte("cover-a"), "a-cover.pdf", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,12 +171,12 @@ func TestGenerations(t *testing.T) {
 	s := open(t)
 	userID := testUser(t, s, "google", "u-1")
 	ta := model.Tailored{TargetRole: "Python Backend Engineer", Gaps: []model.Gap{{Requirement: "Django", Severity: "missing"}}, WhatChanged: []string{"x"}}
-	a, err := s.SaveGeneration(userID, ta, []byte("pdf-a"), "a.pdf", nil, "")
+	a, err := s.SaveGeneration(userID, ta, []byte("pdf-a"), "a.pdf", nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(5 * time.Millisecond)
-	b, _ := s.SaveGeneration(userID, ta, []byte("pdf-b"), "b.pdf", nil, "")
+	b, _ := s.SaveGeneration(userID, ta, []byte("pdf-b"), "b.pdf", nil, "", "")
 	list, err := s.ListGenerations(userID)
 	if err != nil || len(list) != 2 || list[0].ID != b.ID || list[1].ID != a.ID {
 		t.Fatalf("bad list: %+v %v", list, err)
@@ -198,7 +198,7 @@ func TestGenerationsWithCoverLetter(t *testing.T) {
 	userID := testUser(t, s, "google", "u-1")
 	ta := model.Tailored{TargetRole: "X"}
 
-	withCover, err := s.SaveGeneration(userID, ta, []byte("pdf"), "x.pdf", []byte("cover-pdf"), "x-cover.pdf")
+	withCover, err := s.SaveGeneration(userID, ta, []byte("pdf"), "x.pdf", []byte("cover-pdf"), "x-cover.pdf", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestGenerationsWithCoverLetter(t *testing.T) {
 	}
 
 	time.Sleep(5 * time.Millisecond)
-	withoutCover, err := s.SaveGeneration(userID, ta, []byte("pdf2"), "y.pdf", nil, "")
+	withoutCover, err := s.SaveGeneration(userID, ta, []byte("pdf2"), "y.pdf", nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,18 +247,18 @@ func TestGapSummaryGroupsCasingFiltersSingletonsAndTracksNewest(t *testing.T) {
 
 	mk := func(gaps ...model.Gap) model.Tailored { return model.Tailored{TargetRole: "X", Gaps: gaps} }
 
-	if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Django", Evidence: "e1", Severity: "missing"}), []byte("p"), "a.pdf", nil, ""); err != nil {
+	if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Django", Evidence: "e1", Severity: "missing"}), []byte("p"), "a.pdf", nil, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(5 * time.Millisecond)
 	if _, err := s.SaveGeneration(userID, mk(
 		model.Gap{Requirement: "django", Evidence: "e2", Severity: "weak"},
 		model.Gap{Requirement: "Kubernetes", Evidence: "e-k", Severity: "missing"},
-	), []byte("p"), "b.pdf", nil, ""); err != nil {
+	), []byte("p"), "b.pdf", nil, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(5 * time.Millisecond)
-	if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Django", Evidence: "e3-latest", Severity: "missing"}), []byte("p"), "c.pdf", nil, ""); err != nil {
+	if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Django", Evidence: "e3-latest", Severity: "missing"}), []byte("p"), "c.pdf", nil, "", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -298,11 +298,11 @@ func TestGapSummaryDedupesWithinGeneration(t *testing.T) {
 	if _, err := s.SaveGeneration(userID, mk(
 		model.Gap{Requirement: "Django", Evidence: "e1", Severity: "missing"},
 		model.Gap{Requirement: "django ", Evidence: "e1-dup", Severity: "weak"},
-	), []byte("p"), "a.pdf", nil, ""); err != nil {
+	), []byte("p"), "a.pdf", nil, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(5 * time.Millisecond)
-	if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Django", Evidence: "e2", Severity: "missing"}), []byte("p"), "b.pdf", nil, ""); err != nil {
+	if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Django", Evidence: "e2", Severity: "missing"}), []byte("p"), "b.pdf", nil, "", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -334,19 +334,19 @@ func TestGapSummaryOrdering(t *testing.T) {
 	// "Zeta" appears 3 times, "Alpha" appears 3 times (ties go alphabetical),
 	// "Beta" appears 2 times: expect order Alpha, Zeta, Beta.
 	for i := 0; i < 3; i++ {
-		if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Zeta", Evidence: "e", Severity: "missing"}), []byte("p"), "z.pdf", nil, ""); err != nil {
+		if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Zeta", Evidence: "e", Severity: "missing"}), []byte("p"), "z.pdf", nil, "", ""); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
 	for i := 0; i < 3; i++ {
-		if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Alpha", Evidence: "e", Severity: "missing"}), []byte("p"), "a.pdf", nil, ""); err != nil {
+		if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Alpha", Evidence: "e", Severity: "missing"}), []byte("p"), "a.pdf", nil, "", ""); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
 	for i := 0; i < 2; i++ {
-		if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Beta", Evidence: "e", Severity: "weak"}), []byte("p"), "b.pdf", nil, ""); err != nil {
+		if _, err := s.SaveGeneration(userID, mk(model.Gap{Requirement: "Beta", Evidence: "e", Severity: "weak"}), []byte("p"), "b.pdf", nil, "", ""); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(2 * time.Millisecond)
@@ -664,7 +664,7 @@ func TestMigrationAddsCoverColumnsIdempotently(t *testing.T) {
 	userID := testUser(t, s1, "google", "u-1")
 
 	ta := model.Tailored{TargetRole: "X"}
-	meta, err := s1.SaveGeneration(userID, ta, []byte("pdf"), "x.pdf", []byte("cover-pdf"), "x-cover.pdf")
+	meta, err := s1.SaveGeneration(userID, ta, []byte("pdf"), "x.pdf", []byte("cover-pdf"), "x-cover.pdf", "")
 	if err != nil {
 		t.Fatalf("save using migrated columns failed: %v", err)
 	}
@@ -692,7 +692,7 @@ func TestDeleteGenerationScopedPerUser(t *testing.T) {
 	userA := testUser(t, s, "google", "a-1")
 	userB := testUser(t, s, "google", "b-1")
 	ta := model.Tailored{TargetRole: "X"}
-	meta, err := s.SaveGeneration(userA, ta, []byte("pdf"), "a.pdf", nil, "")
+	meta, err := s.SaveGeneration(userA, ta, []byte("pdf"), "a.pdf", nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -735,5 +735,125 @@ func TestResumeStyleRoundTripPerUser(t *testing.T) {
 	}
 	if raw, err := s.GetResumeStyle(userB); err != nil || raw != nil {
 		t.Fatalf("userB must be unset: got %q,%v", raw, err)
+	}
+}
+
+func TestLLMCacheRoundTripAndPrune(t *testing.T) {
+	st := open(t)
+
+	if _, ok := st.GetLLMCache("k1"); ok {
+		t.Fatal("want miss on empty cache")
+	}
+	st.PutLLMCache("k1", []byte(`{"a":1}`))
+	got, ok := st.GetLLMCache("k1")
+	if !ok || string(got) != `{"a":1}` {
+		t.Fatalf("want hit, got %q ok=%v", got, ok)
+	}
+
+	st.PutLLMCache("k1", []byte(`{"a":2}`))
+	if got, _ := st.GetLLMCache("k1"); string(got) != `{"a":2}` {
+		t.Fatalf("want overwrite, got %q", got)
+	}
+
+	// An expired row is a miss and prune removes it.
+	old := time.Now().UTC().Add(-15 * 24 * time.Hour).Format(time.RFC3339)
+	if _, err := st.db.Exec(`UPDATE llm_cache SET created_at = ? WHERE key = 'k1'`, old); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := st.GetLLMCache("k1"); ok {
+		t.Fatal("want expired row to miss")
+	}
+	st.PruneLLMCache()
+	var n int
+	if err := st.db.QueryRow(`SELECT COUNT(*) FROM llm_cache`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("want pruned cache, got %d rows (%v)", n, err)
+	}
+}
+
+func TestSaveGenerationDedupesByFingerprint(t *testing.T) {
+	s := open(t)
+	userID := int64(1)
+	ta := model.Tailored{TargetRole: "Backend Engineer"}
+	fp := RoleFingerprint("https://jobs.example.com/backend#apply")
+
+	first, err := s.SaveGeneration(userID, ta, []byte("pdf-1"), "a_1111.pdf", nil, "", fp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Same link, fragment and trailing slash varied: still the same job.
+	second, err := s.SaveGeneration(userID, ta, []byte("pdf-2"), "a_2222.pdf", nil, "", RoleFingerprint("https://jobs.example.com/backend/"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ID != first.ID {
+		t.Fatalf("want refreshed row to keep id %s, got %s", first.ID, second.ID)
+	}
+
+	list, err := s.ListGenerations(userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Filename != "a_2222.pdf" {
+		t.Fatalf("want one refreshed generation, got %+v", list)
+	}
+	pdf, _, err := s.GetGenerationPDF(userID, first.ID)
+	if err != nil || string(pdf) != "pdf-2" {
+		t.Fatalf("want refreshed pdf, got %q %v", pdf, err)
+	}
+
+	// A different job inserts a second row; another user's same job never
+	// touches the first user's row.
+	third, err := s.SaveGeneration(userID, ta, []byte("pdf-3"), "b_3333.pdf", nil, "", RoleFingerprint("Backend Engineer at Acme"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third.ID == first.ID {
+		t.Fatal("different job must not reuse the row")
+	}
+	other, err := s.SaveGeneration(int64(2), ta, []byte("pdf-4"), "c_4444.pdf", nil, "", fp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other.ID == first.ID {
+		t.Fatal("another user's job must not reuse the row")
+	}
+}
+
+func TestPinnedGenerationsSortFirst(t *testing.T) {
+	s := open(t)
+	userID := int64(1)
+	ta := model.Tailored{TargetRole: "Backend Engineer"}
+
+	older, err := s.SaveGeneration(userID, ta, []byte("p1"), "a.pdf", nil, "", "fp-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer, err := s.SaveGeneration(userID, ta, []byte("p2"), "b.pdf", nil, "", "fp-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := s.SetGenerationPinned(userID, older.ID, true)
+	if err != nil || !found {
+		t.Fatalf("pin: %v found=%v", err, found)
+	}
+	list, err := s.ListGenerations(userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].ID != older.ID || !list[0].Pinned || list[1].ID != newer.ID {
+		t.Fatalf("want pinned first, got %+v", list)
+	}
+
+	// Unpin restores recency order; unknown ids and other users report false.
+	if _, err := s.SetGenerationPinned(userID, older.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	list, _ = s.ListGenerations(userID)
+	if list[0].ID != newer.ID {
+		t.Fatalf("want recency order after unpin, got %+v", list)
+	}
+	if found, _ := s.SetGenerationPinned(int64(2), newer.ID, true); found {
+		t.Fatal("another user must not pin this row")
 	}
 }

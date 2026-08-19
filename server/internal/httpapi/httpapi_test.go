@@ -28,12 +28,15 @@ import (
 // tailorOut overrides the default tailor JSON when set, so tests can probe
 // alternate LLM response shapes (e.g. explicit empty arrays).
 type fakeLLM struct {
-	tailorOut string
-	coverOut  string
-	extendOut string
+	tailorOut   string
+	coverOut    string
+	extendOut   string
+	digitizeOut string
+	classifyOut string
+	skillsOut   string
 }
 
-const digitizeJSON = `{"name":"Ada","email":"a@e.com","phone":"","location":"","summary":"","links":[],"skills":["Python","Go"],
+const digitizeJSON = `{"isResume":true,"notResumeReason":"","name":"Ada","email":"a@e.com","phone":"","location":"","summary":"","links":[],"skills":["Python","Go"],
 	"items":[{"kind":"experience","title":"Engineer","organization":"AE","startDate":"2021-01","endDate":"","bullets":[{"text":"Built engine","skills":["Python"]}]}]}`
 
 const tailorJSON = `{"targetRole":"Python Backend Engineer","headline":"h","summary":"s","selectedSkills":["Python"],
@@ -48,17 +51,17 @@ const tailorJSONEmptyArrays = `{"targetRole":"Python Backend Engineer","headline
 	"bullets":[{"sourceBulletId":"item-0-b-0","text":"Built the engine in Python"}]}]}],
 	"gaps":[],"whatChanged":[]}`
 
-const coverJSON = `{"greeting":"Dear hiring team,","paragraphs":["I am excited to apply for this role.","My experience aligns well with what you need."],"closing":"Sincerely,"}`
+const coverJSON = `{"greeting":"Dear hiring team,","paragraphs":["I am applying for the Python Backend Engineer role. At Analytical Engines Co I built the core computation engine in Python, designing the service layer that carried every production workload and cutting batch processing time for the largest datasets.","That work maps directly onto what this role asks for. I wrote the first published algorithm for the engine, owned its correctness under load, and would bring the same care for measurable outcomes to your backend systems."],"closing":"Sincerely,"}`
 
 // extendJSON adds one new skill and one new item, so a happy-path test can
 // assert both itemCount and skillCount grow. "Rust" is deliberately not
 // already in digitizeJSON's skills (["Python","Go"]) so it isn't deduped away.
-const extendJSON = `{"newSkills":["Rust"],"newItems":[{"kind":"project","title":"Side project","organization":"","startDate":"2024-01","endDate":"","bullets":[{"text":"Built a CLI tool","skills":["Rust"]}]}],"bulletAdditions":[]}`
+const extendJSON = `{"useful":true,"notUsefulReason":"","newSkills":["Rust"],"newItems":[{"kind":"project","title":"Side project","organization":"","startDate":"2024-01","endDate":"","bullets":[{"text":"Built a CLI tool","skills":["Rust"]}]}],"bulletAdditions":[]}`
 
 // extendUnknownIDJSON references an item id that cannot exist in a freshly
 // digitized profile (which only ever has item-0), driving the 502 branch of
 // postProfileExtend via model.MergeAdditions' guardrail.
-const extendUnknownIDJSON = `{"newSkills":[],"newItems":[],"bulletAdditions":[{"itemId":"item-99","bullets":[{"text":"x","skills":[]}]}]}`
+const extendUnknownIDJSON = `{"useful":true,"notUsefulReason":"","newSkills":[],"newItems":[],"bulletAdditions":[{"itemId":"item-99","bullets":[{"text":"x","skills":[]}]}]}`
 
 // isExtendSchema reports whether schema is the ai package's profile-additions
 // schema (shape-tested: its top-level properties include "newSkills"), as
@@ -87,11 +90,48 @@ func isCoverLetterSchema(schema map[string]any) bool {
 	return ok
 }
 
+// isClassifySchema reports whether schema is the ai package's job-input
+// verdict schema (shape-tested: its top-level properties include "usable").
+func isClassifySchema(schema map[string]any) bool {
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return false
+	}
+	_, ok = props["usable"]
+	return ok
+}
+
+// isSkillsVerdictSchema reports whether schema is the ai package's skill
+// verdict schema (shape-tested: its top-level properties include "verdicts").
+func isSkillsVerdictSchema(schema map[string]any) bool {
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return false
+	}
+	_, ok = props["verdicts"]
+	return ok
+}
+
 func (f fakeLLM) GenerateJSON(_ context.Context, _ string, blocks []ai.ContentBlock, schema map[string]any) ([]byte, error) {
 	for _, b := range blocks {
 		if b.PDF != nil {
+			if f.digitizeOut != "" {
+				return []byte(f.digitizeOut), nil
+			}
 			return []byte(digitizeJSON), nil
 		}
+	}
+	if isClassifySchema(schema) {
+		if f.classifyOut != "" {
+			return []byte(f.classifyOut), nil
+		}
+		return []byte(`{"usable":true,"reason":""}`), nil
+	}
+	if isSkillsVerdictSchema(schema) {
+		if f.skillsOut != "" {
+			return []byte(f.skillsOut), nil
+		}
+		return []byte(`{"verdicts":[]}`), nil
 	}
 	if isCoverLetterSchema(schema) {
 		if f.coverOut != "" {
@@ -114,7 +154,7 @@ func (f fakeLLM) GenerateJSON(_ context.Context, _ string, blocks []ai.ContentBl
 	return []byte(tailorJSON), nil
 }
 
-const recruiterJSON = `{"subject":"Application for Python Backend Engineer","paragraphs":["I am applying for the Python Backend Engineer role. I built the engine in Python."],"closing":"Best regards,"}`
+const recruiterJSON = `{"subject":"Application for Python Backend Engineer","paragraphs":["I am applying for the Python Backend Engineer role. At Analytical Engines Co I built the core computation engine in Python and wrote its first published algorithm. My resume and the details are attached."],"closing":"Best regards,"}`
 
 func isRecruiterEmailSchema(schema map[string]any) bool {
 	props, ok := schema["properties"].(map[string]any)
@@ -546,7 +586,7 @@ func TestGenerationsListNilSlicesSerializeAsEmptyArrays(t *testing.T) {
 	s.Register(e)
 
 	ta := model.Tailored{TargetRole: "X", Gaps: nil, WhatChanged: nil}
-	if _, err := st.SaveGeneration(devUserID(t, st), ta, []byte("pdf-bytes"), "x.pdf", nil, ""); err != nil {
+	if _, err := st.SaveGeneration(devUserID(t, st), ta, []byte("pdf-bytes"), "x.pdf", nil, "", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -577,10 +617,10 @@ func TestGapsEndpointShape(t *testing.T) {
 
 	userID := devUserID(t, st)
 	mk := func(gaps ...model.Gap) model.Tailored { return model.Tailored{TargetRole: "X", Gaps: gaps} }
-	if _, err := st.SaveGeneration(userID, mk(model.Gap{Requirement: "Django", Evidence: "e1", Severity: "missing"}), []byte("p"), "a.pdf", nil, ""); err != nil {
+	if _, err := st.SaveGeneration(userID, mk(model.Gap{Requirement: "Django", Evidence: "e1", Severity: "missing"}), []byte("p"), "a.pdf", nil, "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.SaveGeneration(userID, mk(model.Gap{Requirement: "django", Evidence: "e2", Severity: "missing"}), []byte("p"), "b.pdf", nil, ""); err != nil {
+	if _, err := st.SaveGeneration(userID, mk(model.Gap{Requirement: "django", Evidence: "e2", Severity: "missing"}), []byte("p"), "b.pdf", nil, "", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -799,6 +839,9 @@ func (coverFailingLLM) GenerateJSON(_ context.Context, _ string, blocks []ai.Con
 	}
 	if isCoverLetterSchema(schema) {
 		return nil, fmt.Errorf("cover letter boom")
+	}
+	if isClassifySchema(schema) {
+		return []byte(`{"usable":true,"reason":""}`), nil
 	}
 	return []byte(tailorJSON), nil
 }
@@ -1182,5 +1225,377 @@ func TestGenerateWithoutRecruiterFlagUsesNotification(t *testing.T) {
 	}
 	if !notified || recruited {
 		t.Fatalf("want notification only: notified=%v recruited=%v", notified, recruited)
+	}
+}
+
+// TestGenerateRejectsMashInput drives the heuristic gate: obvious keyboard
+// mash gets 422 with the fixed job-input message and never reaches the LLM.
+func TestGenerateRejectsMashInput(t *testing.T) {
+	_, e := newTestServerWithLLM(t, failingLLM{})
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBody("wgfwjhfkjhsdfkjh"))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422 for mash input, got %d: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), "job ad or a role") {
+		t.Fatalf("want fixed job-input copy, got %s", rec.Body)
+	}
+}
+
+// TestGenerateRejectsNonJobInput drives the classifier gate: fluent text the
+// model judges unusable gets 422 with the fixed copy, not a resume.
+func TestGenerateRejectsNonJobInput(t *testing.T) {
+	_, e := newTestServerWithLLM(t, fakeLLM{classifyOut: `{"usable":false,"reason":"grocery list"}`})
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBody("eggs milk bread and a dozen apples"))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422 for non-job input, got %d: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), "job ad or a role") {
+		t.Fatalf("want fixed job-input copy, got %s", rec.Body)
+	}
+}
+
+// TestUploadRejectsNonResumePDF drives the digitize gate: a PDF the model
+// says is not a resume gets 422 and no profile is saved.
+func TestUploadRejectsNonResumePDF(t *testing.T) {
+	notResume := `{"isResume":false,"notResumeReason":"it is an invoice","name":"","email":"","phone":"","location":"","summary":"","links":[],"skills":[],"items":[]}`
+	_, e := newTestServerWithLLM(t, fakeLLM{digitizeOut: notResume})
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, uploadRequest(t, []byte("%PDF-fake")))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422 for non-resume PDF, got %d: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), "read like a resume") {
+		t.Fatalf("want fixed resume copy, got %s", rec.Body)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want no profile saved after rejected upload, got %d", rec.Code)
+	}
+}
+
+// TestExtendRejectsMashNote drives the heuristic gate on the extend note.
+func TestExtendRejectsMashNote(t *testing.T) {
+	_, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, extendRequestBody("qqqqqqqq"))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422 for mash note, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// TestExtendRejectsUselessNote drives the LLM gate: a note the model marks
+// not useful gets 422 and the profile is left untouched.
+func TestExtendRejectsUselessNote(t *testing.T) {
+	useless := `{"useful":false,"notUsefulReason":"just a greeting","newSkills":[],"newItems":[],"bulletAdditions":[]}`
+	_, e := newTestServerWithLLM(t, fakeLLM{extendOut: useless})
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, extendRequestBody("hello there how is it going"))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422 for useless note, got %d: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), "about your experience") {
+		t.Fatalf("want fixed note copy, got %s", rec.Body)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile", nil))
+	var after profileSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &after); err != nil {
+		t.Fatal(err)
+	}
+	if after.ItemCount != 1 || after.SkillCount != 2 {
+		t.Fatalf("want profile unchanged after rejected note, got %+v", after)
+	}
+}
+
+// TestSkillsRoundTrip covers GET/PUT /api/profile/skills: read after upload,
+// replace with a reordered+deduped list, and reject when no profile exists.
+func TestSkillsRoundTrip(t *testing.T) {
+	_, e := newTestServer(t)
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile/skills", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404 before profile, got %d", rec.Code)
+	}
+
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile/skills", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Python") {
+		t.Fatalf("want skills from digitized profile, got %d: %s", rec.Code, rec.Body)
+	}
+
+	put := httptest.NewRequest(http.MethodPut, "/api/profile/skills",
+		strings.NewReader(`{"skills":["Go","Rust","  ","go","TypeScript"]}`))
+	put.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, put)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 on put, got %d: %s", rec.Code, rec.Body)
+	}
+	var got map[string][]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"Go", "Rust", "TypeScript"}
+	if len(got["skills"]) != len(want) {
+		t.Fatalf("want %v, got %v", want, got["skills"])
+	}
+	for i, s := range want {
+		if got["skills"][i] != s {
+			t.Fatalf("want %v, got %v", want, got["skills"])
+		}
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile", nil))
+	var after profileSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &after); err != nil {
+		t.Fatal(err)
+	}
+	if after.SkillCount != 3 {
+		t.Fatalf("want skillCount 3 after put, got %+v", after)
+	}
+}
+
+// TestSkillsRejectsOversizedSkill drives putSkills' length validation.
+func TestSkillsRejectsOversizedSkill(t *testing.T) {
+	_, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	long := strings.Repeat("x", 61)
+	put := httptest.NewRequest(http.MethodPut, "/api/profile/skills",
+		strings.NewReader(`{"skills":["`+long+`"]}`))
+	put.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, put)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for oversized skill, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// TestSkillsRejectsGibberishAddition: a fluent-looking non-skill the model
+// rejects gets 422 naming it, and the profile keeps its old list.
+func TestSkillsRejectsGibberishAddition(t *testing.T) {
+	_, e := newTestServerWithLLM(t, fakeLLM{skillsOut: `{"verdicts":[{"skill":"ewigiuwegf","valid":false}]}`})
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	put := httptest.NewRequest(http.MethodPut, "/api/profile/skills",
+		strings.NewReader(`{"skills":["Python","Go","ewigiuwegf"]}`))
+	put.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, put)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422 for gibberish skill, got %d: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), "ewigiuwegf") {
+		t.Fatalf("want message naming the skill, got %s", rec.Body)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile", nil))
+	var after profileSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &after); err != nil {
+		t.Fatal(err)
+	}
+	if after.SkillCount != 2 {
+		t.Fatalf("want profile unchanged after rejected skill, got %+v", after)
+	}
+}
+
+// TestSkillsRejectsMalformedAddition drives the heuristic layer: bad
+// characters get 422 before any LLM call (failingLLM would 502 otherwise).
+func TestSkillsRejectsMalformedAddition(t *testing.T) {
+	st := newStore(t)
+	s := &Server{Store: st, LLM: failingLLM{}, Auth: devAuth(st)}
+	e := echo.New()
+	s.Register(e)
+	if err := st.SaveProfile(devUserID(t, st), model.Profile{Skills: []string{"Python"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	put := httptest.NewRequest(http.MethodPut, "/api/profile/skills",
+		strings.NewReader(`{"skills":["Python","@@@@"]}`))
+	put.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, put)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422 for malformed skill, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// TestSkillsReorderSkipsLLM: reordering existing skills must never call the
+// model — failingLLM would 502 if it did.
+func TestSkillsReorderSkipsLLM(t *testing.T) {
+	st := newStore(t)
+	s := &Server{Store: st, LLM: failingLLM{}, Auth: devAuth(st)}
+	e := echo.New()
+	s.Register(e)
+	if err := st.SaveProfile(devUserID(t, st), model.Profile{Skills: []string{"Python", "Go"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	put := httptest.NewRequest(http.MethodPut, "/api/profile/skills",
+		strings.NewReader(`{"skills":["Go","Python"]}`))
+	put.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, put)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for reorder without LLM, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// TestGenerationStatus covers the status endpoint: set, list, clear, reject.
+func TestGenerationStatus(t *testing.T) {
+	_, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+	e.ServeHTTP(httptest.NewRecorder(), generateRequestBody("Python Backend Engineer"))
+
+	var rows []store.GenerationMeta
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations", nil))
+	if err := json.Unmarshal(rec.Body.Bytes(), &rows); err != nil || len(rows) != 1 {
+		t.Fatalf("want one generation, got %s (%v)", rec.Body, err)
+	}
+	id := rows[0].ID
+
+	putStatus := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPut, "/api/generations/"+id+"/status", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := putStatus(`{"status":"interviewing"}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations", nil))
+	json.Unmarshal(rec.Body.Bytes(), &rows)
+	if rows[0].Status != "interviewing" || rows[0].StatusAt == "" {
+		t.Fatalf("want status recorded with timestamp, got %+v", rows[0])
+	}
+
+	if rec := putStatus(`{"status":"ghosted"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for unknown status, got %d", rec.Code)
+	}
+	if rec := putStatus(`{"status":""}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("want clearing to succeed, got %d", rec.Code)
+	}
+}
+
+// TestProfileRestore: an extend changes the profile; restore brings the
+// previous version back, and restoring again toggles forward.
+func TestProfileRestore(t *testing.T) {
+	_, e := newTestServer(t)
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/profile/restore", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404 with no history, got %d", rec.Code)
+	}
+
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+	e.ServeHTTP(httptest.NewRecorder(), extendRequestBody("I shipped a CLI tool in Rust at my last role"))
+
+	summary := func() profileSummary {
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile", nil))
+		var s profileSummary
+		if err := json.Unmarshal(rec.Body.Bytes(), &s); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	if got := summary(); got.SkillCount != 3 {
+		t.Fatalf("want extended profile (3 skills), got %+v", got)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/profile/restore", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("restore: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	if got := summary(); got.SkillCount != 2 {
+		t.Fatalf("want pre-extend profile back (2 skills), got %+v", got)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/profile/restore", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second restore: want 200, got %d", rec.Code)
+	}
+	if got := summary(); got.SkillCount != 3 {
+		t.Fatalf("want restore to toggle forward (3 skills), got %+v", got)
+	}
+}
+
+// TestEditGeneration: edits round-trip through validate/normalize/re-render;
+// fabricated ids are rejected.
+func TestEditGeneration(t *testing.T) {
+	_, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+	e.ServeHTTP(httptest.NewRecorder(), generateRequestBody("Python Backend Engineer"))
+
+	var rows []store.GenerationMeta
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations", nil))
+	json.Unmarshal(rec.Body.Bytes(), &rows)
+	id := rows[0].ID
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations/"+id+"/tailored", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get tailored: want 200, got %d", rec.Code)
+	}
+	var ta model.Tailored
+	if err := json.Unmarshal(rec.Body.Bytes(), &ta); err != nil {
+		t.Fatal(err)
+	}
+
+	ta.Headline = "Edited headline"
+	ta.Sections[0].Items[0].Bullets[0].Text = "Rebuilt the engine end to end in Python"
+	body, _ := json.Marshal(ta)
+	req := httptest.NewRequest(http.MethodPut, "/api/generations/"+id, bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("edit: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations/"+id+"/tailored", nil))
+	var after model.Tailored
+	json.Unmarshal(rec.Body.Bytes(), &after)
+	if after.Headline != "Edited headline" || after.Sections[0].Items[0].Bullets[0].Text != "Rebuilt the engine end to end in Python" {
+		t.Fatalf("edit did not persist: %+v", after)
+	}
+
+	// The guardrail still holds: citing an id the profile doesn't have is 422.
+	ta.Sections[0].Items[0].SourceID = "item-99"
+	body, _ = json.Marshal(ta)
+	req = httptest.NewRequest(http.MethodPut, "/api/generations/"+id, bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422 for fabricated id, got %d: %s", rec.Code, rec.Body)
 	}
 }

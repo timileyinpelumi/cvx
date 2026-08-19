@@ -81,8 +81,8 @@ func TestSend_Configured_PostsExpectedPayload(t *testing.T) {
 	}
 
 	subject, _ := gotBody["subject"].(string)
-	if subject != "Resume: Python Backend Engineer" {
-		t.Errorf("subject = %q, want %q", subject, "Resume: Python Backend Engineer")
+	if subject != "Your resume for Python Backend Engineer is ready" {
+		t.Errorf("subject = %q, want %q", subject, "Your resume for Python Backend Engineer is ready")
 	}
 
 	attachments, ok := gotBody["attachments"].([]any)
@@ -221,5 +221,46 @@ func TestSendRecruiterGate(t *testing.T) {
 	ok, err := SendRecruiter("me@example.com", "s", nil, "", "n", nil, "r.pdf", "")
 	if err != nil || ok {
 		t.Fatalf("want false,nil got %v,%v", ok, err)
+	}
+}
+
+func TestRenderNotificationStructure(t *testing.T) {
+	ta := model.Tailored{
+		TargetRole:  "Backend <Engineer>",
+		WhatChanged: []string{"Led with Go & systems work"},
+		Gaps:        []model.Gap{{Requirement: "Kubernetes", Severity: "missing", Evidence: "not in profile"}},
+	}
+	out := renderNotification(ta, []string{"ADA_Backend.pdf", "ADA_Backend_Cover.pdf"})
+
+	for _, want := range []string{
+		"Your resume is ready",
+		"Backend &lt;Engineer&gt;",
+		"Led with Go &amp; systems work",
+		"ADA_Backend.pdf",
+		"ADA_Backend_Cover.pdf",
+		"Kubernetes",
+		"cvx sent this because you generated a resume",
+		"#2244d9",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("notification missing %q", want)
+		}
+	}
+	if strings.Contains(out, "<Engineer>") {
+		t.Error("role was not HTML-escaped")
+	}
+}
+
+func TestRenderRecruiterIsUnbranded(t *testing.T) {
+	out := renderRecruiter([]string{"I am applying for the role."}, "Best regards,", "Ada Lovelace")
+
+	for _, want := range []string{"I am applying for the role.", "Best regards,", "Ada Lovelace"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("recruiter email missing %q", want)
+		}
+	}
+	// Forwardable: nothing may point back at cvx.
+	if strings.Contains(strings.ToLower(out), "cvx") {
+		t.Error("recruiter email must not carry cvx branding")
 	}
 }

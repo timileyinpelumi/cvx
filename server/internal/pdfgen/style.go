@@ -131,11 +131,15 @@ func resolveTheme(s Style) theme {
 		t.twoColSkills = true
 	}
 
+	// Tight has to read as a different sheet at a glance, not a nudge.
 	if s.Density == "tight" {
-		t.leading *= 0.93
-		t.gapSection *= 0.8
-		t.gapItems *= 0.8
-		t.gapBullets *= 0.8
+		t.leading *= 0.88
+		t.gapSection *= 0.65
+		t.gapItems *= 0.65
+		t.gapBullets *= 0.7
+		t.sectionTitlePad *= 0.5
+		t.marginTop -= 2
+		t.marginBottom -= 2
 	}
 
 	return t

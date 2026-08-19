@@ -10,6 +10,12 @@ import (
 
 const extendProfileSystemPrompt = `You convert a short note from the candidate into additions to their existing profile.
 
+First decide whether the note tells you anything about the candidate's work,
+skills, education, or experience. If it does not (mashed characters, a test
+string, a greeting, content unrelated to the candidate's background), set
+useful to false, put one short sentence in notUsefulReason, and leave every
+additions array empty. Otherwise set useful to true and notUsefulReason to "".
+
 Hard rules:
 - Use ONLY facts stated in the note. Never invent employers, dates, or metrics
   that are not in the note.
@@ -58,10 +64,17 @@ func ExtendProfile(ctx context.Context, llm LLM, p model.Profile, note string, g
 		return model.ProfileAdditions{}, fmt.Errorf("extend profile: %w", err)
 	}
 
-	var a model.ProfileAdditions
-	if err := json.Unmarshal(raw, &a); err != nil {
+	var out struct {
+		Useful          bool   `json:"useful"`
+		NotUsefulReason string `json:"notUsefulReason"`
+		model.ProfileAdditions
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
 		return model.ProfileAdditions{}, fmt.Errorf("extend profile: unmarshal response: %w", err)
 	}
+	if !out.Useful {
+		return model.ProfileAdditions{}, fmt.Errorf("%w: %s", ErrNoteNotUseful, out.NotUsefulReason)
+	}
 
-	return a, nil
+	return out.ProfileAdditions, nil
 }

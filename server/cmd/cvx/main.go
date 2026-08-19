@@ -85,7 +85,12 @@ func main() {
 		slog.Error("llm", "err", err)
 		os.Exit(1)
 	}
-	slog.Info("llm", "provider", llmDesc)
+	// Every LLM call is memoized in SQLite (14-day TTL) keyed on the full
+	// request, so identical work across all surfaces never hits the provider
+	// twice. cvxeval builds its own raw LLM and stays uncached on purpose.
+	st.PruneLLMCache()
+	llm = ai.NewCachedLLM(llm, llmDesc, st.GetLLMCache, st.PutLLMCache)
+	slog.Info("llm", "provider", llmDesc, "cache", "sqlite")
 
 	// Auth is not optional (see docs/superpowers/plans/2026-08-02-cvx-v1.3.md
 	// Global Constraints): CVX_DEV_USER wins for local dev, otherwise OAuth

@@ -8,7 +8,9 @@ package ai
 var profileSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
-		"name":     map[string]any{"type": "string"},
+		"isResume":        map[string]any{"type": "boolean"},
+		"notResumeReason": map[string]any{"type": "string"},
+		"name":            map[string]any{"type": "string"},
 		"email":    map[string]any{"type": "string"},
 		"phone":    map[string]any{"type": "string"},
 		"location": map[string]any{"type": "string"},
@@ -60,7 +62,7 @@ var profileSchema = map[string]any{
 			},
 		},
 	},
-	"required":             []string{"name", "email", "phone", "location", "summary", "links", "skills", "items"},
+	"required":             []string{"isResume", "notResumeReason", "name", "email", "phone", "location", "summary", "links", "skills", "items"},
 	"additionalProperties": false,
 }
 
@@ -156,6 +158,8 @@ var bulletDraftSchema = map[string]any{
 var profileAdditionsSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
+		"useful":          map[string]any{"type": "boolean"},
+		"notUsefulReason": map[string]any{"type": "string"},
 		"newSkills": map[string]any{
 			"type":  "array",
 			"items": map[string]any{"type": "string"},
@@ -195,7 +199,7 @@ var profileAdditionsSchema = map[string]any{
 			},
 		},
 	},
-	"required":             []string{"newSkills", "newItems", "bulletAdditions"},
+	"required":             []string{"useful", "notUsefulReason", "newSkills", "newItems", "bulletAdditions"},
 	"additionalProperties": false,
 }
 

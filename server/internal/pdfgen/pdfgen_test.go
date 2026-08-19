@@ -216,3 +216,41 @@ func newTestPDF() *fpdf.Fpdf {
 	pdf.AddPage()
 	return pdf
 }
+
+// TestStretchFillsSparsePage: the fixture is a one-item resume, well under a
+// page at base spacing. The refit pass must raise the fill without spilling
+// to a second page, and Render must take that path (its fill beats a raw
+// typeset's).
+func TestStretchFillsSparsePage(t *testing.T) {
+	p, ta := fixture()
+	cfg := resolveTheme(DefaultStyle())
+
+	_, pages, fill := typeset(p, ta, cfg, false)
+	if pages != 1 {
+		t.Fatalf("fixture should be one page, got %d", pages)
+	}
+	if fill >= minFill {
+		t.Fatalf("fixture should be under-full, got fill %.2f", fill)
+	}
+
+	_, pages2, fill2 := typeset(p, ta, stretched(cfg, fill), false)
+	if pages2 != 1 {
+		t.Fatalf("stretched layout spilled to %d pages", pages2)
+	}
+	if fill2 <= fill {
+		t.Fatalf("stretch did not raise fill: %.2f -> %.2f", fill, fill2)
+	}
+
+	if _, err := Render(p, ta, DefaultStyle()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestTightenedReducesSpacing pins the tighten pass's direction.
+func TestTightenedReducesSpacing(t *testing.T) {
+	cfg := resolveTheme(DefaultStyle())
+	tight := tightened(cfg)
+	if tight.leading >= cfg.leading || tight.gapSection >= cfg.gapSection {
+		t.Fatalf("tightened did not reduce spacing: %+v vs %+v", tight, cfg)
+	}
+}

@@ -65,8 +65,9 @@ const validResumeRubricJSON = `{"selection":{"score":8,"rationale":"good picks"}
 	`"headlineSummary":{"score":8,"rationale":"apt"}}`
 
 const validCoverLetterJSON = `{"greeting":"Dear hiring team,",` +
-	`"paragraphs":["I am excited to apply.","My background fits well."],` +
-	`"closing":"Sincerely, Alex"}`
+	`"paragraphs":["I am applying for the Backend Engineer role. At Analytical Engines Co I built the core computation engine in Go, designing the service layer that carried every production workload and cutting batch processing time for the largest datasets.",` +
+	`"That work maps directly onto what this role asks for. I wrote the first published algorithm for the engine, owned its correctness under load, and would bring the same care for measurable outcomes to your backend systems."],` +
+	`"closing":"Sincerely,"}`
 
 const validCoverRubricJSON = `{"specificity":{"score":7,"rationale":"specific enough"},` +
 	`"voice":{"score":8,"rationale":"natural"},` +

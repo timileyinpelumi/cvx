@@ -43,15 +43,29 @@ func sampleTailoredWithBullet(itemID, bulletID string) Tailored {
 }
 
 func TestFilename(t *testing.T) {
-	got := Filename("Ada  Lovelace", "Sr. Engineer (Backend)")
-	if got != "Ada_Lovelace_Sr_Engineer_Backend.pdf" {
+	got := Filename("Ada  Lovelace", "Sr. Engineer (Backend)", 1234)
+	if got != "Ada_Lovelace_Sr_Engineer_Backend_1234.pdf" {
 		t.Fatalf("got %q", got)
 	}
 }
 
+func TestFilenameCapsLongParts(t *testing.T) {
+	got := Filename(
+		"Timileyin Oluwapelumi Ademidun",
+		"Senior Staff Platform Reliability Engineer, Payments Infrastructure",
+		1234,
+	)
+	if got != "Timileyin_Senior_Staff_Platform_1234.pdf" {
+		t.Fatalf("got %q", got)
+	}
+	if len(got) > 60 {
+		t.Fatalf("filename too long: %d chars", len(got))
+	}
+}
+
 func TestCoverFilename(t *testing.T) {
-	got := CoverFilename("Ada  Lovelace", "Sr. Engineer (Backend)")
-	if got != "Ada_Lovelace_Sr_Engineer_Backend_Cover_Letter.pdf" {
+	got := CoverFilename("Ada  Lovelace", "Sr. Engineer (Backend)", 1234)
+	if got != "Ada_Lovelace_Sr_Engineer_Backend_1234_Cover.pdf" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -120,5 +134,77 @@ func TestMergeAdditionsUnknownItemIDErrors(t *testing.T) {
 	}
 	if len(p.Items[0].Bullets) != 1 {
 		t.Fatalf("want profile unchanged on error, got %+v", p.Items[0].Bullets)
+	}
+}
+
+func TestNormalizeTailored(t *testing.T) {
+	item := func(bullets int) TItem {
+		it := TItem{SourceID: "item-0", Title: "Engineer"}
+		for i := 0; i < bullets; i++ {
+			it.Bullets = append(it.Bullets, TBullet{SourceBulletID: "item-0-b-0", Text: "did a thing"})
+		}
+		return it
+	}
+
+	ta := Tailored{
+		Headline: strings.Repeat("word ", 40),
+		Summary:  strings.Repeat("one two three four five six seven eight nine ten. ", 10),
+		Sections: []TSection{
+			{Title: "Experience", Items: []TItem{item(6), item(2), item(2), item(2)}},
+			{Title: "Projects", Items: []TItem{item(2), item(2)}},
+			{Title: "Empty"},
+		},
+		SelectedSkills: make([]string, 20),
+		WhatChanged:    make([]string, 6),
+		Gaps:           make([]Gap, 9),
+	}
+	NormalizeTailored(&ta)
+
+	total := 0
+	for _, s := range ta.Sections {
+		total += len(s.Items)
+		for _, it := range s.Items {
+			if len(it.Bullets) > 4 {
+				t.Fatalf("bullets not clamped: %d", len(it.Bullets))
+			}
+		}
+		if len(s.Items) == 0 {
+			t.Fatal("empty section not dropped")
+		}
+	}
+	if total != 5 {
+		t.Fatalf("want 5 items total, got %d", total)
+	}
+	if len(ta.Headline) > 110 || strings.HasSuffix(ta.Headline, " ") {
+		t.Fatalf("headline not clamped cleanly: %q", ta.Headline)
+	}
+	if got := len(strings.Fields(ta.Summary)); got > 75 {
+		t.Fatalf("summary not clamped: %d words", got)
+	}
+	if !strings.HasSuffix(ta.Summary, ".") {
+		t.Fatalf("summary should end on a sentence: %q", ta.Summary)
+	}
+	if len(ta.SelectedSkills) != 14 || len(ta.WhatChanged) != 4 || len(ta.Gaps) != 6 {
+		t.Fatalf("list caps not applied: %d %d %d", len(ta.SelectedSkills), len(ta.WhatChanged), len(ta.Gaps))
+	}
+}
+
+func TestNormalizeTailoredLeavesCompliantAlone(t *testing.T) {
+	ta := Tailored{
+		Headline: "Backend Engineer",
+		Summary:  "Short and sweet.",
+		Sections: []TSection{{Title: "Experience", Items: []TItem{{SourceID: "item-0", Bullets: []TBullet{{}, {}}}}}},
+	}
+	before := ta.Headline + ta.Summary
+	NormalizeTailored(&ta)
+	if ta.Headline+ta.Summary != before || len(ta.Sections) != 1 || len(ta.Sections[0].Items) != 1 {
+		t.Fatalf("compliant output was altered: %+v", ta)
+	}
+}
+
+func TestFilenameTitleCases(t *testing.T) {
+	got := Filename("TIMILEYIN PELUMI", "devops engineer", 3698)
+	if got != "Timileyin_Pelumi_Devops_Engineer_3698.pdf" {
+		t.Fatalf("got %q", got)
 	}
 }

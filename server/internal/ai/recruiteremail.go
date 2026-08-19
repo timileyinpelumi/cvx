@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"cvx/internal/model"
 )
@@ -49,15 +50,26 @@ func RecruiterEmail(ctx context.Context, llm LLM, p model.Profile, roleInput str
 		{Text: fmt.Sprintf("Target role:\n%s", roleInput)},
 	}
 
-	raw, err := llm.GenerateJSON(ctx, recruiterEmailSystemPrompt, blocks, recruiterEmailSchema)
-	if err != nil {
-		return model.RecruiterEmail{}, fmt.Errorf("recruiter email: %w", err)
-	}
+	// Bounded QC loop: exactly one generation plus at most one corrective
+	// rewrite — never a retry-until-clean loop; a second bad draft is a hard
+	// error (this path deliberately has no fallback).
+	var violations []string
+	for attempt := 0; attempt < 2; attempt++ {
+		raw, err := llm.GenerateJSON(ctx, recruiterEmailSystemPrompt, blocks, recruiterEmailSchema)
+		if err != nil {
+			return model.RecruiterEmail{}, fmt.Errorf("recruiter email: %w", err)
+		}
 
-	var re model.RecruiterEmail
-	if err := json.Unmarshal(raw, &re); err != nil {
-		return model.RecruiterEmail{}, fmt.Errorf("recruiter email: unmarshal response: %w", err)
-	}
+		var re model.RecruiterEmail
+		if err := json.Unmarshal(raw, &re); err != nil {
+			return model.RecruiterEmail{}, fmt.Errorf("recruiter email: unmarshal response: %w", err)
+		}
 
-	return re, nil
+		violations = checkRecruiterEmail(re, p.Name)
+		if len(violations) == 0 {
+			return re, nil
+		}
+		blocks = append(blocks, ContentBlock{Text: "Previous draft:\n" + string(raw)}, rewriteBlock(violations))
+	}
+	return model.RecruiterEmail{}, fmt.Errorf("recruiter email failed quality checks: %s", strings.Join(violations, "; "))
 }

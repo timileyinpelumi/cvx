@@ -20,7 +20,7 @@ func (f *fakeLLM) GenerateJSON(_ context.Context, system string, blocks []Conten
 }
 
 func digitizedSample() model.Profile {
-	f := &fakeLLM{out: `{"name":"Ada","email":"a@e.com","phone":"","location":"","summary":"","links":[],"skills":["Python"],
+	f := &fakeLLM{out: `{"isResume":true,"notResumeReason":"","name":"Ada","email":"a@e.com","phone":"","location":"","summary":"","links":[],"skills":["Python"],
 		"items":[{"kind":"experience","title":"Engineer","organization":"AE","startDate":"2021-01","endDate":"","bullets":[{"text":"Built engine","skills":["Python"]}]}]}`}
 	p, err := Digitize(context.Background(), f, []byte("%PDF"))
 	if err != nil {
@@ -30,7 +30,7 @@ func digitizedSample() model.Profile {
 }
 
 func TestDigitize(t *testing.T) {
-	f := &fakeLLM{out: `{"name":"Ada","email":"a@e.com","phone":"","location":"","summary":"","links":[],"skills":["Python"],
+	f := &fakeLLM{out: `{"isResume":true,"notResumeReason":"","name":"Ada","email":"a@e.com","phone":"","location":"","summary":"","links":[],"skills":["Python"],
 		"items":[{"kind":"experience","title":"Engineer","organization":"AE","startDate":"2021-01","endDate":"","bullets":[{"text":"Built engine","skills":["Python"]}]}]}`}
 	p, err := Digitize(context.Background(), f, []byte("%PDF"))
 	if err != nil || p.Items[0].ID != "item-0" || p.Items[0].Bullets[0].ID != "item-0-b-0" {
@@ -95,5 +95,39 @@ func TestTailorRejectsFabrication(t *testing.T) {
 		"bullets":[{"sourceBulletId":"item-7-b-0","text":"Ran everything"}]}]}],"gaps":[],"whatChanged":[]}`}
 	if _, err := Tailor(context.Background(), f, p, "X"); err == nil || !strings.Contains(err.Error(), "item-7") {
 		t.Fatalf("want fabrication error, got %v", err)
+	}
+}
+
+func TestTailorOptionsInstructions(t *testing.T) {
+	if got := (TailorOptions{}).instructions(); got != "" {
+		t.Fatalf("zero options must add nothing, got %q", got)
+	}
+	if got := (TailorOptions{Tone: "plain", Summary: "standard", Bullets: "full"}).instructions(); got != "" {
+		t.Fatalf("named defaults must add nothing, got %q", got)
+	}
+	got := TailorOptions{Tone: "confident", Summary: "none", Bullets: "lean"}.instructions()
+	for _, want := range []string{"assertive", "empty string", "2 or 3 bullets"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("instructions missing %q: %q", want, got)
+		}
+	}
+}
+
+func TestTailorWithOptionsAppendsBlock(t *testing.T) {
+	p := digitizedSample()
+	f := &fakeLLM{out: tailoredSample}
+	if _, err := TailorWithOptions(context.Background(), f, p, "role", TailorOptions{Tone: "confident"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.blocks) != 3 {
+		t.Fatalf("want profile+role+adjustments blocks, got %d", len(f.blocks))
+	}
+
+	f2 := &fakeLLM{out: tailoredSample}
+	if _, err := Tailor(context.Background(), f2, p, "role"); err != nil {
+		t.Fatal(err)
+	}
+	if len(f2.blocks) != 2 {
+		t.Fatalf("default Tailor must send exactly profile+role, got %d", len(f2.blocks))
 	}
 }

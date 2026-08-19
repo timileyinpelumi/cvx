@@ -16,7 +16,7 @@ func (extendFailingLLM) GenerateJSON(context.Context, string, []ContentBlock, ma
 
 func TestExtendProfileValid(t *testing.T) {
 	p := digitizedSample() // item-0 / item-0-b-0, skills ["Python"]
-	f := &fakeLLM{out: `{"newSkills":["Go"],"newItems":[],"bulletAdditions":[{"itemId":"item-0","bullets":[{"text":"Shipped v2","skills":["Go"]}]}]}`}
+	f := &fakeLLM{out: `{"useful":true,"notUsefulReason":"","newSkills":["Go"],"newItems":[],"bulletAdditions":[{"itemId":"item-0","bullets":[{"text":"Shipped v2","skills":["Go"]}]}]}`}
 
 	a, err := ExtendProfile(context.Background(), f, p, "Shipped v2 of the engine using Go", "")
 	if err != nil {
@@ -35,7 +35,7 @@ func TestExtendProfileValid(t *testing.T) {
 
 func TestExtendProfileNewItem(t *testing.T) {
 	p := digitizedSample()
-	f := &fakeLLM{out: `{"newSkills":[],"newItems":[{"kind":"project","title":"Side project","organization":"","startDate":"2024-01","endDate":"","bullets":[{"text":"Built a CLI tool","skills":["Rust"]}]}],"bulletAdditions":[]}`}
+	f := &fakeLLM{out: `{"useful":true,"notUsefulReason":"","newSkills":[],"newItems":[{"kind":"project","title":"Side project","organization":"","startDate":"2024-01","endDate":"","bullets":[{"text":"Built a CLI tool","skills":["Rust"]}]}],"bulletAdditions":[]}`}
 
 	a, err := ExtendProfile(context.Background(), f, p, "I also built a CLI tool in Rust on the side", "")
 	if err != nil {
@@ -51,7 +51,7 @@ func TestExtendProfileNewItem(t *testing.T) {
 
 func TestExtendProfileCallShape(t *testing.T) {
 	p := digitizedSample()
-	f := &fakeLLM{out: `{"newSkills":[],"newItems":[],"bulletAdditions":[]}`}
+	f := &fakeLLM{out: `{"useful":true,"notUsefulReason":"","newSkills":[],"newItems":[],"bulletAdditions":[]}`}
 
 	if _, err := ExtendProfile(context.Background(), f, p, "shipped the v2 launch", ""); err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestExtendProfileSchemaShape(t *testing.T) {
 	if !ok {
 		t.Fatalf("required is not []string: %v", profileAdditionsSchema["required"])
 	}
-	want := []string{"newSkills", "newItems", "bulletAdditions"}
+	want := []string{"useful", "notUsefulReason", "newSkills", "newItems", "bulletAdditions"}
 	if len(req) != len(want) {
 		t.Fatalf("required = %v, want %v", req, want)
 	}
@@ -104,7 +104,7 @@ func TestExtendProfileLLMFailure(t *testing.T) {
 }
 
 func TestExtendProfileGapContext(t *testing.T) {
-	f := &fakeLLM{out: `{"newSkills":[],"newItems":[],"bulletAdditions":[]}`}
+	f := &fakeLLM{out: `{"useful":true,"notUsefulReason":"","newSkills":[],"newItems":[],"bulletAdditions":[]}`}
 	p := digitizedSample()
 
 	if _, err := ExtendProfile(context.Background(), f, p, "I used Django on one internal tool", "Django experience — not in profile"); err != nil {
@@ -117,7 +117,7 @@ func TestExtendProfileGapContext(t *testing.T) {
 		t.Fatal("system prompt must carry the targeting rule")
 	}
 
-	f2 := &fakeLLM{out: `{"newSkills":[],"newItems":[],"bulletAdditions":[]}`}
+	f2 := &fakeLLM{out: `{"useful":true,"notUsefulReason":"","newSkills":[],"newItems":[],"bulletAdditions":[]}`}
 	if _, err := ExtendProfile(context.Background(), f2, p, "note", ""); err != nil {
 		t.Fatal(err)
 	}

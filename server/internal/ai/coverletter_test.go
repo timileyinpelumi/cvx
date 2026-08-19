@@ -36,7 +36,7 @@ func TestCoverLetterSchemaRequiredFields(t *testing.T) {
 
 func TestCoverLetterValid(t *testing.T) {
 	p := digitizedSample()
-	f := &fakeLLM{out: `{"greeting":"Dear hiring team,","paragraphs":["I build backend systems in Python.","I would welcome the chance to contribute."],"closing":"Sincerely,"}`}
+	f := &fakeLLM{out: `{"greeting":"Dear hiring team,","paragraphs":["I am applying for the Python Backend Engineer role. At Analytical Engines Co I built the core computation engine in Python, designing the service layer that carried every production workload and cutting batch processing time for the largest datasets.","That work maps directly onto what this role asks for. I wrote the first published algorithm for the engine, owned its correctness under load, and would bring the same care for measurable outcomes to your backend systems."],"closing":"Sincerely,"}`}
 
 	cl, err := CoverLetter(context.Background(), f, p, "Python Backend Engineer")
 	if err != nil {
@@ -49,7 +49,7 @@ func TestCoverLetterValid(t *testing.T) {
 
 func TestCoverLetterCallShape(t *testing.T) {
 	p := digitizedSample()
-	f := &fakeLLM{out: `{"greeting":"Dear hiring team,","paragraphs":["p1"],"closing":"Sincerely,"}`}
+	f := &fakeLLM{out: `{"greeting":"Dear hiring team,","paragraphs":["I am applying for the Python Backend Engineer role. At Analytical Engines Co I built the core computation engine in Python, designing the service layer that carried every production workload and cutting batch processing time for the largest datasets.","That work maps directly onto what this role asks for. I wrote the first published algorithm for the engine, owned its correctness under load, and would bring the same care for measurable outcomes to your backend systems."],"closing":"Sincerely,"}`}
 
 	if _, err := CoverLetter(context.Background(), f, p, "Python Backend Engineer"); err != nil {
 		t.Fatal(err)
