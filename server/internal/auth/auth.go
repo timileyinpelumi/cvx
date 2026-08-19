@@ -34,6 +34,8 @@ type Auth struct {
 	// AllowedEmails, when non-empty, restricts sign-in to these emails
 	// (lowercased). Empty means any provider account may sign in.
 	AllowedEmails map[string]bool
+	// SecureCookies marks every cookie Secure (production behind HTTPS).
+	SecureCookies bool
 }
 
 func errJSON(c echo.Context, status int, msg string) error {
@@ -99,21 +101,21 @@ func (a *Auth) GetMe(c echo.Context) error {
 
 // Logout handles POST /api/logout: clears the session cookie unconditionally.
 func (a *Auth) Logout(c echo.Context) error {
-	clearCookie(c, SessionCookieName)
+	a.clearCookie(c, SessionCookieName)
 	return c.NoContent(http.StatusNoContent)
 }
 
 // clearCookie overwrites name with an immediately-expired, empty-valued
 // cookie, matching the attributes it was set with so browsers actually
 // clear it.
-func clearCookie(c echo.Context, name string) {
+func (a *Auth) clearCookie(c echo.Context, name string) {
 	c.SetCookie(&http.Cookie{
 		Name:     name,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		// Secure intentionally omitted — cvx serves plain HTTP on localhost only.
+		Secure:   a.SecureCookies,
 		SameSite: http.SameSiteLaxMode,
 	})
 }

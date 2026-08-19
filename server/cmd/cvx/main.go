@@ -69,6 +69,14 @@ func main() {
 
 	loadDotEnv(".env")
 
+	// Production guard: dev auto-auth must never run where real traffic can
+	// reach it.
+	production := os.Getenv("CVX_ENV") == "production"
+	if production && os.Getenv("CVX_DEV_USER") != "" {
+		slog.Error("CVX_DEV_USER is set with CVX_ENV=production; refusing to start")
+		os.Exit(1)
+	}
+
 	if err := os.MkdirAll("data", 0o755); err != nil {
 		slog.Error("mkdir data", "err", err)
 		os.Exit(1)
@@ -105,6 +113,7 @@ func main() {
 		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
 		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
 		AllowedEmails:      splitCommaEnv(os.Getenv("CVX_ALLOWED_EMAILS")),
+		SecureCookies:      production,
 	})
 	if err != nil {
 		slog.Error("auth", "err", err)

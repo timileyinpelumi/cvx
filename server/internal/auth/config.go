@@ -24,6 +24,10 @@ type Config struct {
 	GitHubClientID     string // GITHUB_CLIENT_ID
 	GitHubClientSecret string // GITHUB_CLIENT_SECRET
 
+	// SecureCookies marks every cookie Secure — required behind HTTPS in
+	// production (CVX_ENV=production).
+	SecureCookies bool
+
 	// AllowedEmails restricts sign-in when non-empty (CVX_ALLOWED_EMAILS,
 	// comma-separated). Matching is case-insensitive.
 	AllowedEmails []string
@@ -44,6 +48,7 @@ func New(cfg Config) (*Auth, error) {
 	a := &Auth{
 		Store:         cfg.Store,
 		AllowedEmails: normalizeEmails(cfg.AllowedEmails),
+		SecureCookies: cfg.SecureCookies,
 	}
 
 	if cfg.DevUserEmail != "" {

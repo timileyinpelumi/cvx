@@ -135,7 +135,7 @@ func (a *Auth) AuthStart(c echo.Context) error {
 		Path:     "/",
 		MaxAge:   int(oauthStateTTL.Seconds()),
 		HttpOnly: true,
-		// Secure intentionally omitted — cvx serves plain HTTP on localhost only.
+		Secure:   a.SecureCookies,
 		SameSite: http.SameSiteLaxMode,
 	})
 	return c.Redirect(http.StatusFound, p.Config.AuthCodeURL(state))
@@ -154,7 +154,7 @@ func (a *Auth) AuthCallback(c echo.Context) error {
 	// test-only quirk), so clearing must happen up front, not via defer, or
 	// every error path below would leave the stale cookie behind.
 	stateCookie, stateCookieErr := c.Cookie(oauthStateCookieName(providerName))
-	clearCookie(c, oauthStateCookieName(providerName))
+	a.clearCookie(c, oauthStateCookieName(providerName))
 
 	p, ok := a.Providers[providerName]
 	if !ok {
@@ -202,7 +202,7 @@ func (a *Auth) AuthCallback(c echo.Context) error {
 		Path:     "/",
 		MaxAge:   int(SessionTTL.Seconds()),
 		HttpOnly: true,
-		// Secure intentionally omitted — cvx serves plain HTTP on localhost only.
+		Secure:   a.SecureCookies,
 		SameSite: http.SameSiteLaxMode,
 	})
 	return c.Redirect(http.StatusFound, "/")

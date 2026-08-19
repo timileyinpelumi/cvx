@@ -1,0 +1,5 @@
+data/
+.env
+eval/results/
+Dockerfile
+fly.toml
