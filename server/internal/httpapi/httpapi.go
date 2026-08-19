@@ -69,6 +69,7 @@ func (s *Server) Register(e *echo.Echo) {
 	api := e.Group("/api")
 	api.Use(s.Auth.Middleware)
 	api.GET("/me", s.Auth.GetMe)
+	api.DELETE("/account", s.deleteAccount)
 	api.GET("/profile", s.getProfile)
 	api.POST("/profile", s.postProfile)
 	api.POST("/profile/extend", s.postProfileExtend)
@@ -103,6 +104,20 @@ func summarize(p model.Profile) profileSummary {
 
 func errJSON(c echo.Context, status int, msg string) error {
 	return c.JSON(status, map[string]string{"error": msg})
+}
+
+// deleteAccount wipes the signed-in user and all their data, then ends the
+// session. There is no undo.
+func (s *Server) deleteAccount(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	if err := s.Store.DeleteUser(userID); err != nil {
+		slog.Error("delete account failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	return s.Auth.Logout(c)
 }
 
 func (s *Server) getProfile(c echo.Context) error {

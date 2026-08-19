@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, LogOut, Plus, Upload } from "lucide-react";
+import { ExternalLink, LogOut, Plus, Trash2, Upload } from "lucide-react";
 import { api, previewURL } from "@/lib/api";
 import { cx } from "@/lib/format";
 import { ACCENTS, THEMES, type ResumeDensity, type ResumeStyle, type Settings } from "@/lib/types";
@@ -444,7 +444,10 @@ function WritingKnob({
 function SessionSection() {
   const { me } = useSession();
   const router = useRouter();
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function signOut() {
     setBusy(true);
@@ -452,18 +455,57 @@ function SessionSection() {
     router.replace("/signin");
   }
 
+  async function deleteAccount() {
+    setDeleting(true);
+    try {
+      await api.deleteAccount();
+      router.replace("/signin");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Couldn't delete your account", "error");
+      setDeleting(false);
+      setConfirmingDelete(false);
+    }
+  }
+
   return (
     <section>
       <Eyebrow>Signed in</Eyebrow>
-      <div className="panel mt-4 flex flex-wrap items-center gap-3 p-5">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-medium">{me?.email}</p>
-          <p className="mt-0.5 text-[11.5px] capitalize text-fg-faint">via {me?.provider}</p>
+      <div className="panel mt-4 divide-y divide-line">
+        <div className="flex flex-wrap items-center gap-3 p-5">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px] font-medium">{me?.email}</p>
+            <p className="mt-0.5 text-[11.5px] capitalize text-fg-faint">via {me?.provider}</p>
+          </div>
+          <Button size="sm" variant="ghost" loading={busy} onClick={signOut}>
+            <LogOut size={13} />
+            Sign out
+          </Button>
         </div>
-        <Button size="sm" variant="ghost" loading={busy} onClick={signOut}>
-          <LogOut size={13} />
-          Sign out
-        </Button>
+
+        <div className="flex flex-wrap items-center gap-3 p-5">
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-medium">Delete account</p>
+            <p className="mt-0.5 text-[11.5px] leading-snug text-fg-muted">
+              Removes your profile, every resume, and your settings. There is no undo.
+            </p>
+          </div>
+          {confirmingDelete ? (
+            <div className="flex items-center gap-2">
+              <span className="hidden text-[12.5px] text-fg-muted sm:inline">You sure?</span>
+              <Button size="sm" variant="danger" onClick={deleteAccount} loading={deleting}>
+                Delete everything
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button size="sm" variant="danger" onClick={() => setConfirmingDelete(true)}>
+              <Trash2 size={13} />
+              Delete account
+            </Button>
+          )}
+        </div>
       </div>
     </section>
   );

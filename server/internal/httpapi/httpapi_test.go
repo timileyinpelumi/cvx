@@ -1599,3 +1599,40 @@ func TestEditGeneration(t *testing.T) {
 		t.Fatalf("want 422 for fabricated id, got %d: %s", rec.Code, rec.Body)
 	}
 }
+
+// TestDeleteAccount wipes everything the user owns and ends the session;
+// another user's data is untouched.
+func TestDeleteAccount(t *testing.T) {
+	st := newStore(t)
+	_, e := newTestServerAs(t, st, "a@test.local")
+	_, other := newTestServerAs(t, st, "b@test.local")
+
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+	e.ServeHTTP(httptest.NewRecorder(), generateRequestBody("Python Backend Engineer"))
+	other.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/account", nil))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+
+	// Dev-mode auth re-creates the user on the next request, but their data
+	// must be gone.
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want profile gone after delete, got %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations", nil))
+	if !strings.Contains(rec.Body.String(), "[]") {
+		t.Fatalf("want no generations after delete, got %s", rec.Body)
+	}
+
+	rec = httptest.NewRecorder()
+	other.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("other user's profile must survive, got %d", rec.Code)
+	}
+}

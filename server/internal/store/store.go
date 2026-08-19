@@ -249,6 +249,29 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+// DeleteUser permanently removes the user and everything they own, in one
+// transaction. The LLM cache is left alone: it is keyed by request content,
+// not user.
+func (s *Store) DeleteUser(userID int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, q := range []string{
+		`DELETE FROM generations WHERE user_id = ?`,
+		`DELETE FROM profile_history WHERE user_id = ?`,
+		`DELETE FROM profile WHERE user_id = ?`,
+		`DELETE FROM user_settings WHERE user_id = ?`,
+		`DELETE FROM users WHERE id = ?`,
+	} {
+		if _, err := tx.Exec(q, userID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // llmCacheTTL bounds how long a cached LLM response is served; PruneLLMCache
 // removes older rows on startup.
 const llmCacheTTL = 14 * 24 * time.Hour

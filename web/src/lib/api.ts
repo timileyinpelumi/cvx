@@ -50,6 +50,8 @@ export const api = {
 
   logout: () => request<void>("/api/logout", { method: "POST" }),
 
+  deleteAccount: () => request<void>("/api/account", { method: "DELETE" }),
+
   providers: () =>
     request<{ providers: string[] }>("/auth/providers").then((r) => r.providers),
 
