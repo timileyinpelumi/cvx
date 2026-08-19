@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- The typecase: the grid the composer fills, with one gap left open. -->
+  <rect width="64" height="64" rx="14" fill="#2244D9"/>
+  <g fill="#FFFFFF">
+    <rect x="12" y="12" width="11" height="11" rx="3"/>
+    <rect x="26.5" y="12" width="11" height="11" rx="3"/>
+    <rect x="41" y="12" width="11" height="11" rx="3"/>
+    <rect x="12" y="26.5" width="11" height="11" rx="3"/>
+    <rect x="26.5" y="26.5" width="11" height="11" rx="3"/>
+    <rect x="41" y="26.5" width="11" height="11" rx="3"/>
+    <rect x="12" y="41" width="11" height="11" rx="3"/>
+    <rect x="26.5" y="41" width="11" height="11" rx="3"/>
+  </g>
+  <rect x="41" y="41" width="11" height="11" rx="3" fill="#FFFFFF" opacity="0.28"/>
+</svg>

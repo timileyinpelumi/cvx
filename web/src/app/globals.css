@@ -1,0 +1,254 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   cvx — machine & paper
+   The interface is a cool graphite control surface. In the light theme the
+   proof is warm paper; in the dark theme it sits on the same graphite as the
+   rest of the machine.
+   --------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light;
+
+  --surface: #f5f6f8;
+  --raised: #ffffff;
+  --sunken: #edeff3;
+
+  --fg: #12161c;
+  --fg-muted: #5c6672;
+  --fg-faint: #8a94a2;
+
+  --line: #dee2e8;
+  --line-strong: #c6ccd5;
+
+  --ink: #2244d9;
+  --ink-hover: #1b37b0;
+  --ink-contrast: #ffffff;
+  --ink-soft: rgb(34 68 217 / 0.09);
+
+  --missing: #c4342a;
+  --weak: #9a6510;
+  --good: #12734a;
+  --missing-soft: rgb(196 52 42 / 0.1);
+  --weak-soft: rgb(154 101 16 / 0.12);
+  --good-soft: rgb(18 115 74 / 0.12);
+
+  --radius-ctl: 8px;
+  --radius-panel: 12px;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface: #0e1116;
+  --raised: #161b22;
+  --sunken: #0a0d11;
+
+  --fg: #e6eaf0;
+  --fg-muted: #8b95a3;
+  --fg-faint: #626c7a;
+
+  --line: #232a33;
+  --line-strong: #333c48;
+
+  --ink: #5b7bff;
+  --ink-hover: #7c95ff;
+  --ink-contrast: #0a0d11;
+  --ink-soft: rgb(91 123 255 / 0.14);
+
+  --missing: #f0705f;
+  --weak: #d9a441;
+  --good: #4ec48d;
+  --missing-soft: rgb(240 112 95 / 0.13);
+  --weak-soft: rgb(217 164 65 / 0.14);
+  --good-soft: rgb(78 196 141 / 0.14);
+}
+
+:root {
+  --paper: #fbfaf7;
+  --paper-raised: #ffffff;
+  --paper-sunken: #f2efe8;
+  --paper-fg: #1a1712;
+  --paper-fg-muted: #6b6255;
+  --paper-fg-faint: #8c8375;
+  --paper-line: #e5e0d6;
+  --paper-line-strong: #d5cec0;
+}
+
+/* In the dark theme the proof stays on the machine's own palette — warm paper
+   only exists in the light. */
+[data-theme="dark"] {
+  --paper: var(--raised);
+  --paper-raised: #1d242e;
+  --paper-sunken: var(--sunken);
+  --paper-fg: var(--fg);
+  --paper-fg-muted: var(--fg-muted);
+  --paper-fg-faint: var(--fg-faint);
+  --paper-line: var(--line);
+  --paper-line-strong: var(--line-strong);
+}
+
+/* Anything inside the proof is on paper: the neutral palette swaps to the warm
+   paper set while ink and severity colours stay the active theme's. Because
+   the Tailwind theme maps every colour utility back to these variables,
+   scoping them here is enough; no component needs to know which theme it's in. */
+.paper-scope {
+  --surface: var(--paper);
+  --raised: var(--paper-raised);
+  --sunken: var(--paper-sunken);
+
+  --fg: var(--paper-fg);
+  --fg-muted: var(--paper-fg-muted);
+  --fg-faint: var(--paper-fg-faint);
+
+  --line: var(--paper-line);
+  --line-strong: var(--paper-line-strong);
+}
+
+@theme inline {
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-faint: var(--fg-faint);
+
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-ink: var(--ink);
+  --color-ink-hover: var(--ink-hover);
+  --color-ink-contrast: var(--ink-contrast);
+  --color-ink-soft: var(--ink-soft);
+
+  --color-missing: var(--missing);
+  --color-weak: var(--weak);
+  --color-missing-soft: var(--missing-soft);
+  --color-weak-soft: var(--weak-soft);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+
+  --color-paper: var(--paper);
+  --color-paper-fg: var(--paper-fg);
+  --color-paper-fg-muted: var(--paper-fg-muted);
+  --color-paper-line: var(--paper-line);
+
+  --font-display: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
+
+  --radius-ctl: 8px;
+  --radius-panel: 12px;
+}
+
+@layer base {
+  * {
+    border-color: var(--line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--surface);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Every interactive element gets the same visible ring — the machine tells
+     you where your hands are. */
+  :focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  ::selection {
+    background: var(--ink);
+    color: var(--ink-contrast);
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+
+  textarea {
+    resize: none;
+  }
+
+  ::placeholder {
+    color: var(--fg-faint);
+  }
+}
+
+@layer utilities {
+  /* Eyebrow: the small mono label that titles a region. Structural, not
+     decorative — it names what the region contains. */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--fg-faint);
+  }
+
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  .panel {
+    background: var(--raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-panel);
+  }
+
+  .toast-in {
+    animation: toast-in 180ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .toast-in {
+      animation: none;
+    }
+  }
+
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
