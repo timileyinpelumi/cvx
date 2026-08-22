@@ -8,6 +8,7 @@ import { cx } from "@/lib/format";
 import { ACCENTS, THEMES, type ResumeDensity, type ResumeStyle, type Settings } from "@/lib/types";
 import { useSession } from "@/components/Session";
 import { useToast } from "@/components/Toast";
+import { IntakeQuestions } from "@/components/IntakeQuestions";
 import { ProfileDetails } from "@/components/ProfileDetails";
 import { Button, Eyebrow, PageHeader, Skeleton } from "@/components/ui";
 
@@ -58,6 +59,7 @@ export default function AccountPage() {
           {tab === "you" && (
             <>
               <RecordSection />
+              <IntakeQuestions />
               <ProfileDetails />
             </>
           )}

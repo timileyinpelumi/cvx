@@ -95,6 +95,17 @@ func isCoverLetterSchema(schema map[string]any) bool {
 	return ok
 }
 
+// isProfileSchema reports whether schema is the ai package's profile schema
+// (shape-tested: its top-level properties include "isResume").
+func isProfileSchema(schema map[string]any) bool {
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return false
+	}
+	_, ok = props["isResume"]
+	return ok
+}
+
 // isClassifySchema reports whether schema is the ai package's job-input
 // verdict schema (shape-tested: its top-level properties include "usable").
 func isClassifySchema(schema map[string]any) bool {
@@ -125,6 +136,14 @@ func (f fakeLLM) GenerateJSON(_ context.Context, _ string, blocks []ai.ContentBl
 			}
 			return []byte(digitizeJSON), nil
 		}
+	}
+	// The text intake path carries no PDF block, so route on the schema:
+	// the digitize fixture is the profile-shaped answer either way.
+	if isProfileSchema(schema) {
+		if f.digitizeOut != "" {
+			return []byte(f.digitizeOut), nil
+		}
+		return []byte(digitizeJSON), nil
 	}
 	if isClassifySchema(schema) {
 		if f.classifyOut != "" {
@@ -1859,5 +1878,101 @@ func TestPutProfileEditsTheFactsAndLeavesHistoryAlone(t *testing.T) {
 	e.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 for a nameless profile, got %d", rec.Code)
+	}
+}
+
+// The path for people who have never had a CV: prose in, profile out.
+func TestProfileFromTextAndFollowUpQuestions(t *testing.T) {
+	s, e := newTestServer(t)
+
+	body, _ := json.Marshal(map[string]string{
+		"text": "I have been a backend engineer at Venix for the last two years, mostly Python and Postgres, and I built their payment service.",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/profile/text", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("profile from text: %d %s", rec.Code, rec.Body)
+	}
+
+	stored, err := s.Store.LoadProfile(devUserID(t, s.Store))
+	if err != nil || stored == nil {
+		t.Fatalf("no profile saved: %v", err)
+	}
+	if len(stored.Items) == 0 {
+		t.Fatal("the text produced no items")
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile/questions", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("questions: %d %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		Questions []model.Question `json:"questions"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	// A profile this thin has holes worth asking about.
+	if len(got.Questions) == 0 {
+		t.Fatalf("want follow-up questions for a thin profile: %+v", stored)
+	}
+}
+
+// Too little to work with is refused before it reaches the model. Longer
+// nonsense is deliberately left to the model: quality.Mash is lenient by
+// design, and a fluent-looking string is not something a regex should judge.
+func TestProfileFromTextRefusesNothing(t *testing.T) {
+	_, e := newTestServer(t)
+	for _, text := range []string{"", "hi", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"} {
+		body, _ := json.Marshal(map[string]string{"text": text})
+		req := httptest.NewRequest(http.MethodPost, "/api/profile/text", bytes.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code == http.StatusOK {
+			t.Fatalf("%q should not have produced a profile", text)
+		}
+	}
+}
+
+// Text the model judges to carry no career content comes back as a 422 with
+// copy a person can act on, not a stack trace.
+func TestProfileFromTextRefusesNonCareerText(t *testing.T) {
+	st := newStore(t)
+	s := &Server{
+		Store:  st,
+		LLM:    fakeLLM{digitizeOut: `{"isResume":false,"notResumeReason":"this is a recipe","name":"","email":"","phone":"","location":"","summary":"","links":[],"certifications":[],"languages":[],"interests":[],"skills":[],"items":[]}`},
+		Auth:   devAuth(st),
+		Events: &Recorder{Store: st},
+	}
+	e := echo.New()
+	s.Register(e)
+
+	body, _ := json.Marshal(map[string]string{
+		"text": "Combine the flour and the butter, then bake for forty minutes at one eighty.",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/profile/text", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), "your work") {
+		t.Fatalf("the message should tell them what is wrong: %s", rec.Body)
+	}
+}
+
+// Questions never fail on a signed-in account with no profile yet.
+func TestProfileQuestionsWithoutAProfile(t *testing.T) {
+	_, e := newTestServer(t)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile/questions", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
 	}
 }

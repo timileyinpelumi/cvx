@@ -278,6 +278,16 @@ export interface ProfileSummary {
   skillCount: number;
 }
 
+/** A hole in the profile worth asking about, derived from its shape rather
+ *  than generated, so it can never ask about a job you do not have. */
+export interface IntakeQuestion {
+  id: string;
+  ask: string;
+  why: string;
+  itemId?: string;
+  placeholder?: string;
+}
+
 export interface Me {
   id: number;
   email: string;

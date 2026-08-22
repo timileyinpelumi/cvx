@@ -90,6 +90,8 @@ func (s *Server) Register(e *echo.Echo) {
 	api.GET("/profile/edits", s.getProfileEdits)
 	api.PUT("/profile", s.putProfile)
 	api.POST("/profile", s.postProfile, costly...)
+	api.POST("/profile/text", s.postProfileText, costly...)
+	api.GET("/profile/questions", s.getProfileQuestions)
 	api.POST("/profile/extend", s.postProfileExtend, costly...)
 	api.GET("/profile/history", s.getProfileHistory)
 	api.POST("/profile/restore", s.postProfileRestore)
@@ -279,6 +281,79 @@ func (s *Server) postProfile(c echo.Context) error {
 		"items": len(p.Items), "skills": len(p.Skills),
 	})
 	return c.JSON(http.StatusOK, summarize(p))
+}
+
+// postProfileText builds a profile from prose, for people who have never
+// had a CV to upload. Same extraction as the PDF path, with a front door
+// that accepts a LinkedIn about-section or a few typed sentences.
+func (s *Server) postProfileText(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return errJSON(c, http.StatusBadRequest, "invalid request body")
+	}
+	text := strings.TrimSpace(req.Text)
+	if len(text) < 40 {
+		return errJSON(c, http.StatusBadRequest, "tell cvx a bit more than that")
+	}
+	if quality.Mash(text) {
+		return errJSON(c, http.StatusUnprocessableEntity, msgNoteNotUseful)
+	}
+
+	started := time.Now()
+	p, err := ai.DigitizeText(c.Request().Context(), s.LLM, text)
+	if err != nil {
+		s.Events.Done(c, store.EventProfileUpload, "text", started, err, nil)
+		if errors.Is(err, ai.ErrNotResume) {
+			slog.Info("profile text rejected", "err", err)
+			return errJSON(c, http.StatusUnprocessableEntity, "that doesn't say anything about your work yet")
+		}
+		slog.Error("digitize text failed", "err", err)
+		return errJSON(c, http.StatusBadGateway, err.Error())
+	}
+
+	// Whatever the text left out, the account already knows.
+	if u, err := s.Store.GetUser(userID); err == nil && u != nil {
+		if p.Name == "" {
+			p.Name = u.Name
+		}
+		if p.Email == "" {
+			p.Email = u.Email
+		}
+	}
+
+	if err := s.Store.SaveProfile(userID, p); err != nil {
+		slog.Error("save profile failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	s.Events.Done(c, store.EventProfileUpload, "text", started, nil, map[string]any{
+		"items": len(p.Items), "skills": len(p.Skills),
+	})
+	return c.JSON(http.StatusOK, summarize(p))
+}
+
+// getProfileQuestions returns what is worth asking about this profile.
+// Derived from its shape rather than generated, so it costs nothing and can
+// never ask about a job the person does not have.
+func (s *Server) getProfileQuestions(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	p, err := s.Store.LoadProfile(userID)
+	if err != nil {
+		slog.Error("load profile failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if p == nil {
+		return c.JSON(http.StatusOK, map[string]any{"questions": []model.Question{}})
+	}
+	return c.JSON(http.StatusOK, map[string]any{"questions": model.IntakeQuestions(*p)})
 }
 
 func (s *Server) getProfileHistory(c echo.Context) error {

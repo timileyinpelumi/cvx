@@ -4,6 +4,7 @@ import type {
   AdminUser,
   AvailableContent,
   GapsSummary,
+  IntakeQuestion,
   GenerateRequest,
   GenerateResult,
   GenerationMeta,
@@ -93,6 +94,16 @@ export const api = {
     form.append("file", file);
     return request<ProfileSummary>("/api/profile", { method: "POST", body: form });
   },
+
+  profileFromText: (text: string) =>
+    request<ProfileSummary>("/api/profile/text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    }),
+
+  profileQuestions: () =>
+    request<{ questions: IntakeQuestion[] }>("/api/profile/questions").then((r) => r.questions),
 
   extendProfile: (note: string, context: string) =>
     request<ProfileSummary>("/api/profile/extend", {
