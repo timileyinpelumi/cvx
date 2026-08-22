@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"mime/multipart"
@@ -1703,5 +1704,155 @@ func TestFollowUpRefusesUntilTheApplicationIsSentAndOldEnough(t *testing.T) {
 	}
 	if code := followUp(); code != http.StatusConflict {
 		t.Fatalf("want 409 for an application sent today, got %d", code)
+	}
+}
+
+func TestPreviewRendersWithoutSaving(t *testing.T) {
+	s, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBody("Python Backend Engineer"))
+	var gen generateResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &gen); err != nil {
+		t.Fatal(err)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations/"+gen.ID+"/tailored", nil))
+	var tailored model.Tailored
+	if err := json.Unmarshal(rec.Body.Bytes(), &tailored); err != nil {
+		t.Fatal(err)
+	}
+
+	edited := tailored.Clone()
+	edited.Headline = "A headline only the preview has seen"
+	body, _ := json.Marshal(edited)
+	req := httptest.NewRequest(http.MethodPost, "/api/generations/"+gen.ID+"/preview", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("preview: %d %s", rec.Code, rec.Body)
+	}
+
+	var preview previewResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &preview); err != nil {
+		t.Fatal(err)
+	}
+	pdf, err := base64.StdEncoding.DecodeString(preview.PDF)
+	if err != nil || !bytes.HasPrefix(pdf, []byte("%PDF")) {
+		t.Fatalf("preview did not return a PDF: %v", err)
+	}
+	if preview.Fill <= 0 || preview.Fill > 1.2 {
+		t.Fatalf("implausible fill: %v", preview.Fill)
+	}
+
+	// Nothing was stored: the saved copy still has the old headline.
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations/"+gen.ID+"/tailored", nil))
+	var after model.Tailored
+	if err := json.Unmarshal(rec.Body.Bytes(), &after); err != nil {
+		t.Fatal(err)
+	}
+	if after.Headline == edited.Headline {
+		t.Fatal("preview wrote to the stored generation")
+	}
+	_ = s
+}
+
+func TestAvailableContentOffersBackWhatTheResumeDoesNotUse(t *testing.T) {
+	s, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBody("Python Backend Engineer"))
+	var gen generateResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &gen); err != nil {
+		t.Fatal(err)
+	}
+
+	// Strip the resume down to one bullet, so the rest of the profile is
+	// unused and must be offered back.
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations/"+gen.ID+"/tailored", nil))
+	var tailored model.Tailored
+	if err := json.Unmarshal(rec.Body.Bytes(), &tailored); err != nil {
+		t.Fatal(err)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations/"+gen.ID+"/available", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("available: %d %s", rec.Code, rec.Body)
+	}
+	var avail availableResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &avail); err != nil {
+		t.Fatal(err)
+	}
+	if len(avail.Skills) == 0 {
+		t.Fatal("the profile's skills should be offered for the skills row")
+	}
+	for _, item := range avail.Items {
+		if item.OnResume && len(item.Bullets) == 0 {
+			t.Fatalf("an item with nothing left to add should not be listed: %+v", item)
+		}
+	}
+	_ = s
+}
+
+func TestPutProfileEditsTheFactsAndLeavesHistoryAlone(t *testing.T) {
+	s, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile/edits", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("profile edits: %d %s", rec.Code, rec.Body)
+	}
+	var edits model.ProfileEdits
+	if err := json.Unmarshal(rec.Body.Bytes(), &edits); err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := s.Store.LoadProfile(devUserID(t, s.Store))
+	if err != nil || before == nil {
+		t.Fatal(err)
+	}
+
+	edits.Name = "Ada Byron"
+	edits.LinkedIn = "https://linkedin.com/in/ada"
+	edits.Languages = []string{"English"}
+	edits.Certifications = []model.Certification{{Name: "AWS Solutions Architect"}}
+
+	body, _ := json.Marshal(edits)
+	req := httptest.NewRequest(http.MethodPut, "/api/profile", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("put profile: %d %s", rec.Code, rec.Body)
+	}
+
+	after, err := s.Store.LoadProfile(devUserID(t, s.Store))
+	if err != nil || after == nil {
+		t.Fatal(err)
+	}
+	if after.Name != "Ada Byron" || len(after.Languages) != 1 || len(after.Certifications) != 1 {
+		t.Fatalf("edits lost: %+v", after)
+	}
+	if len(after.Items) != len(before.Items) {
+		t.Fatalf("history changed: %d items, was %d", len(after.Items), len(before.Items))
+	}
+
+	// A profile with no name is not a profile.
+	edits.Name = "  "
+	body, _ = json.Marshal(edits)
+	req = httptest.NewRequest(http.MethodPut, "/api/profile", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for a nameless profile, got %d", rec.Code)
 	}
 }

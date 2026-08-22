@@ -28,6 +28,10 @@ Hard rules:
 - List a skill in newSkills only when the note explicitly evidences it (the
   note names the technology, tool, or method). Never infer a skill that is
   merely plausible.
+- A note can also carry the material that has no home among items: a
+  credential goes in newCertifications, a spoken language in newLanguages
+  (never a programming language, that is a skill), and a hobby, community,
+  or outside activity in newInterests. Copy the candidate's own words.
 - Leave newSkills, newItems, or bulletAdditions as empty arrays (not
   omitted) when the note has nothing to add for that category.
 - A separate "Gap context" block may be present: it names a requirement

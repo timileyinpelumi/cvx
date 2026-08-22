@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { AlertTriangle, Check, ChevronDown, Download, Eye, Mail } from "lucide-react";
 import { coverURL, pdfURL } from "@/lib/api";
 import { countBySeverity, cx, fullDate, plural } from "@/lib/format";
@@ -21,6 +22,8 @@ export interface ProofData {
   fit?: Fit;
   coverage?: Coverage;
   proseWarnings?: Ungrounded[];
+  pageFill?: number;
+  pageAdvice?: string[];
 }
 
 export function Proof({ data }: { data: ProofData }) {
@@ -102,6 +105,30 @@ export function Proof({ data }: { data: ProofData }) {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {data.pageAdvice && data.pageAdvice.length > 0 && (
+        <div className="border-t border-line px-4 py-4 sm:px-6">
+          <p className="text-[13px] font-medium">
+            Your page ends early{typeof data.pageFill === "number" && ` at about ${Math.round(data.pageFill * 100)}% full`}
+          </p>
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-fg-muted">
+            cvx used everything in your profile. Adding any of these would fill the rest:
+          </p>
+          <ul className="mt-2 space-y-1">
+            {data.pageAdvice.map((line, i) => (
+              <li key={i} className="text-[12.5px] leading-relaxed text-fg-muted">
+                {line}
+              </li>
+            ))}
+          </ul>
+          <Link
+            href="/account"
+            className="mt-2 inline-block text-[12.5px] font-medium text-ink transition-opacity duration-[130ms] hover:opacity-70"
+          >
+            Add it to your profile
+          </Link>
         </div>
       )}
 

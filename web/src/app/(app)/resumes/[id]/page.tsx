@@ -121,7 +121,14 @@ export default function GenerationDetailPage() {
         }
       />
 
-      <div className="mx-auto max-w-[46rem] px-4 py-5 sm:px-7 sm:py-6">
+      {/* The editor runs a preview pane beside itself, so it gets the wider
+          measure; everything else stays at reading width. */}
+      <div
+        className={cx(
+          "mx-auto px-4 py-5 sm:px-7 sm:py-6",
+          editing ? "max-w-[78rem]" : "max-w-[46rem]",
+        )}
+      >
         {error ? (
           <ErrorState message={error} onRetry={reload} />
         ) : row === undefined ? (

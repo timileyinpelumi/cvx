@@ -82,6 +82,8 @@ export default function ComposePage() {
         fit: result.fit,
         coverage: result.coverage,
         proseWarnings: result.proseWarnings,
+        pageFill: result.pageFill,
+        pageAdvice: result.pageAdvice,
       });
       setStatus("done");
 

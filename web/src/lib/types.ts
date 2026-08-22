@@ -28,6 +28,37 @@ export interface Fit {
   reasons: string[];
 }
 
+export interface AvailableBullet {
+  sourceBulletId: string;
+  text: string;
+}
+
+export interface AvailableItem {
+  sourceId: string;
+  kind: string;
+  title: string;
+  organization: string;
+  dates: string;
+  onResume: boolean;
+  bullets: AvailableBullet[];
+}
+
+export interface AvailableContent {
+  items: AvailableItem[];
+  skills: string[];
+  certifications: string[];
+  languages: string[];
+  interests: string[];
+}
+
+export interface PreviewResult {
+  pdf: string;
+  fill: number;
+  trimmed?: string[] | null;
+  stretched: boolean;
+  pageAdvice?: string[];
+}
+
 export interface RecruiterEmail {
   subject: string;
   greeting: string;
@@ -84,6 +115,27 @@ export const STATUS_TONES: Record<Exclude<ApplicationStatus, "">, { chip: string
   offer: { chip: "border-good bg-good-soft text-good", badge: "bg-good-soft text-good" },
 };
 
+export interface Certification {
+  name: string;
+  issuer: string;
+  year: string;
+}
+
+/** The facts the profile editor owns. Work history is not among them: it
+ *  comes from the uploaded resume and from notes. */
+export interface ProfileEdits {
+  name: string;
+  email: string;
+  phone: string;
+  location: string;
+  github: string;
+  linkedin: string;
+  portfolio: string;
+  certifications?: Certification[];
+  languages?: string[];
+  interests?: string[];
+}
+
 export interface TBullet {
   sourceBulletId: string;
   text: string;
@@ -98,6 +150,7 @@ export interface TItem {
 }
 
 export interface TSection {
+  kind: string;
   title: string;
   items: TItem[];
 }
@@ -105,6 +158,9 @@ export interface TSection {
 export interface Tailored {
   targetRole: string;
   roleSummary: string;
+  certifications?: string[];
+  languages?: string[];
+  interests?: string[];
   headline: string;
   summary: string;
   selectedSkills: string[];
@@ -157,6 +213,8 @@ export interface GenerateResult {
   fit?: Fit;
   coverage?: Coverage;
   proseWarnings?: Ungrounded[];
+  pageFill: number;
+  pageAdvice?: string[];
 }
 
 export type ResumeTheme = "classic" | "modern" | "compact";

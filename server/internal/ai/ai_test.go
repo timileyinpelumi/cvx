@@ -70,8 +70,10 @@ func TestTailorCallShape(t *testing.T) {
 	// the verbatim-skills rule that backs the selectedSkillsSubset check.
 	for _, phrase := range []string{
 		"sourceBulletId",
-		"Select 3 to 5 items",
-		"2 to 4 bullets per item",
+		"Select 4 to 8 items",
+		"2 to 5 bullets per item",
+		"relevance-ordered",
+		"VERBATIM from the profile's own arrays",
 		"Never force-fit",
 		"Anti-stuffing",
 		"copied verbatim from the",

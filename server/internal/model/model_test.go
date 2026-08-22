@@ -150,11 +150,13 @@ func TestNormalizeTailored(t *testing.T) {
 		Headline: strings.Repeat("word ", 40),
 		Summary:  strings.Repeat("one two three four five six seven eight nine ten. ", 10),
 		Sections: []TSection{
-			{Title: "Experience", Items: []TItem{item(6), item(2), item(2), item(2)}},
-			{Title: "Projects", Items: []TItem{item(2), item(2)}},
-			{Title: "Empty"},
+			{Kind: SectionExperience, Title: "Experience", Items: []TItem{item(6), item(2), item(2), item(2), item(2), item(2)}},
+			{Kind: SectionProjects, Title: "Projects", Items: []TItem{item(2), item(2), item(2), item(2)}},
+			{Kind: SectionOther, Title: "Empty"},
 		},
 		SelectedSkills: make([]string, 20),
+		Languages:      make([]string, 9),
+		Interests:      make([]string, 9),
 		WhatChanged:    make([]string, 6),
 		Gaps:           make([]Gap, 9),
 	}
@@ -164,7 +166,7 @@ func TestNormalizeTailored(t *testing.T) {
 	for _, s := range ta.Sections {
 		total += len(s.Items)
 		for _, it := range s.Items {
-			if len(it.Bullets) > 4 {
+			if len(it.Bullets) > maxItemBullets {
 				t.Fatalf("bullets not clamped: %d", len(it.Bullets))
 			}
 		}
@@ -172,8 +174,8 @@ func TestNormalizeTailored(t *testing.T) {
 			t.Fatal("empty section not dropped")
 		}
 	}
-	if total != 5 {
-		t.Fatalf("want 5 items total, got %d", total)
+	if total != maxResumeItems {
+		t.Fatalf("want %d items total, got %d", maxResumeItems, total)
 	}
 	if len(ta.Headline) > 110 || strings.HasSuffix(ta.Headline, " ") {
 		t.Fatalf("headline not clamped cleanly: %q", ta.Headline)
@@ -184,8 +186,11 @@ func TestNormalizeTailored(t *testing.T) {
 	if !strings.HasSuffix(ta.Summary, ".") {
 		t.Fatalf("summary should end on a sentence: %q", ta.Summary)
 	}
-	if len(ta.SelectedSkills) != 14 || len(ta.WhatChanged) != 4 || len(ta.Gaps) != 6 {
+	if len(ta.SelectedSkills) != maxResumeSkills || len(ta.WhatChanged) != maxWhatChanged || len(ta.Gaps) != maxGapsListed {
 		t.Fatalf("list caps not applied: %d %d %d", len(ta.SelectedSkills), len(ta.WhatChanged), len(ta.Gaps))
+	}
+	if len(ta.Languages) != maxLanguages || len(ta.Interests) != maxInterests {
+		t.Fatalf("optional-line caps not applied: %d %d", len(ta.Languages), len(ta.Interests))
 	}
 }
 

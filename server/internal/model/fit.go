@@ -1,6 +1,9 @@
 package model
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // FitBand is the one-word verdict shown next to the score.
 const (
@@ -92,4 +95,53 @@ func plural(n int, one, many string) string {
 		return "1 " + one
 	}
 	return fmt.Sprintf("%d %s", n, many)
+}
+
+// PageAdvice is what a page that ended early needs, phrased as something the
+// user can act on. Empty when the page is full: a full page needs nothing
+// said about it.
+//
+// Spacing can only stretch so far before a resume reads as scattered lines,
+// so once the fit loop has used every item, bullet, certification, language
+// and interest the profile holds, a short page is a content problem. This
+// says so, and names the material that would fix it.
+func PageAdvice(p Profile, fill float64, trimmed int) []string {
+	if fill >= FullPage || trimmed > 0 {
+		return nil
+	}
+	var out []string
+	if len(p.Certifications) == 0 {
+		out = append(out, "a certification or a course you finished")
+	}
+	if len(p.Languages) == 0 {
+		out = append(out, "the languages you speak")
+	}
+	if len(p.Interests) == 0 {
+		out = append(out, "an interest or a community you are part of, if it says something about how you work")
+	}
+	if !hasKind(p, "project") {
+		out = append(out, "a side project, with two lines on what it does")
+	}
+	if !hasKind(p, "volunteering") {
+		out = append(out, "volunteering, if you have done any")
+	}
+	if !hasKind(p, "education") {
+		out = append(out, "your education")
+	}
+	if len(out) == 0 {
+		out = append(out, "another two bullets on the work you have already listed")
+	}
+	return out
+}
+
+// FullPage is the fill a resume should reach before it stops looking short.
+const FullPage = 0.90
+
+func hasKind(p Profile, kind string) bool {
+	for _, it := range p.Items {
+		if strings.EqualFold(strings.TrimSpace(it.Kind), kind) {
+			return true
+		}
+	}
+	return false
 }

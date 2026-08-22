@@ -25,7 +25,17 @@ Rules:
   methods explicitly named in or clearly implied by that bullet).
 - Preserve the candidate's own wording for bullets; do not rephrase.
 - "kind" for each item should be one of: "experience", "education",
-  "project", or another short lowercase label that best matches the entry.`
+  "project", "volunteering", or another short lowercase label that best
+  matches the entry.
+- "certifications" are credentials with no bullets and no date range (a
+  named certificate, licence, or award), each with whatever the document
+  gives of issuer and year.
+- "languages" are spoken or written human languages, with the stated level
+  when the document gives one ("French (fluent)"). Not programming
+  languages: those are skills.
+- "interests" are hobbies, communities, and outside activities exactly as
+  the document lists them. Do not invent any: an empty array is the correct
+  answer for a resume that has no such section.`
 
 // draftBullet/draftItem/draftProfile mirror model's shapes minus id fields —
 // the LLM never assigns ids; model.AssignIDs does that deterministically
@@ -56,6 +66,10 @@ type draftProfile struct {
 	Links    []model.Link `json:"links"`
 	Skills   []string     `json:"skills"`
 	Items    []draftItem  `json:"items"`
+
+	Certifications []model.Certification `json:"certifications"`
+	Languages      []string              `json:"languages"`
+	Interests      []string              `json:"interests"`
 }
 
 // Digitize turns a PDF resume into a model.Profile with ids assigned.
@@ -83,6 +97,10 @@ func Digitize(ctx context.Context, llm LLM, pdf []byte) (model.Profile, error) {
 		Links:    d.Links,
 		Skills:   d.Skills,
 		Items:    make([]model.Item, len(d.Items)),
+
+		Certifications: d.Certifications,
+		Languages:      d.Languages,
+		Interests:      d.Interests,
 	}
 	for i, di := range d.Items {
 		item := model.Item{

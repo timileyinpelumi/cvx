@@ -27,6 +27,21 @@ var profileSchema = map[string]any{
 				"additionalProperties": false,
 			},
 		},
+		"certifications": map[string]any{
+			"type": "array",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":   map[string]any{"type": "string"},
+					"issuer": map[string]any{"type": "string"},
+					"year":   map[string]any{"type": "string"},
+				},
+				"required":             []string{"name", "issuer", "year"},
+				"additionalProperties": false,
+			},
+		},
+		"languages": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		"interests": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		"skills": map[string]any{
 			"type":  "array",
 			"items": map[string]any{"type": "string"},
@@ -62,7 +77,7 @@ var profileSchema = map[string]any{
 			},
 		},
 	},
-	"required":             []string{"isResume", "notResumeReason", "name", "email", "phone", "location", "summary", "links", "skills", "items"},
+	"required":             []string{"isResume", "notResumeReason", "name", "email", "phone", "location", "summary", "links", "certifications", "languages", "interests", "skills", "items"},
 	"additionalProperties": false,
 }
 
@@ -79,11 +94,18 @@ var tailoredSchema = map[string]any{
 			"type":  "array",
 			"items": map[string]any{"type": "string"},
 		},
+		"certifications": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		"languages":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		"interests":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		"sections": map[string]any{
 			"type": "array",
 			"items": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
+					"kind": map[string]any{
+						"type": "string",
+						"enum": []string{"experience", "projects", "education", "certifications", "volunteering", "other"},
+					},
 					"title": map[string]any{"type": "string"},
 					"items": map[string]any{
 						"type": "array",
@@ -112,7 +134,7 @@ var tailoredSchema = map[string]any{
 						},
 					},
 				},
-				"required":             []string{"title", "items"},
+				"required":             []string{"kind", "title", "items"},
 				"additionalProperties": false,
 			},
 		},
@@ -134,7 +156,7 @@ var tailoredSchema = map[string]any{
 			"items": map[string]any{"type": "string"},
 		},
 	},
-	"required":             []string{"targetRole", "roleSummary", "headline", "summary", "selectedSkills", "sections", "gaps", "whatChanged"},
+	"required":             []string{"targetRole", "roleSummary", "headline", "summary", "selectedSkills", "certifications", "languages", "interests", "sections", "gaps", "whatChanged"},
 	"additionalProperties": false,
 }
 
@@ -165,6 +187,21 @@ var profileAdditionsSchema = map[string]any{
 			"type":  "array",
 			"items": map[string]any{"type": "string"},
 		},
+		"newCertifications": map[string]any{
+			"type": "array",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":   map[string]any{"type": "string"},
+					"issuer": map[string]any{"type": "string"},
+					"year":   map[string]any{"type": "string"},
+				},
+				"required":             []string{"name", "issuer", "year"},
+				"additionalProperties": false,
+			},
+		},
+		"newLanguages": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		"newInterests": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		"newItems": map[string]any{
 			"type": "array",
 			"items": map[string]any{
@@ -200,7 +237,8 @@ var profileAdditionsSchema = map[string]any{
 			},
 		},
 	},
-	"required":             []string{"useful", "notUsefulReason", "newSkills", "newItems", "bulletAdditions"},
+	"required": []string{"useful", "notUsefulReason", "newSkills", "newCertifications",
+		"newLanguages", "newInterests", "newItems", "bulletAdditions"},
 	"additionalProperties": false,
 }
 

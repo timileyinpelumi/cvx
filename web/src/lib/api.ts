@@ -1,9 +1,12 @@
 import type {
+  AvailableContent,
   GapsSummary,
   GenerateRequest,
   GenerateResult,
   GenerationMeta,
   Me,
+  PreviewResult,
+  ProfileEdits,
   ProfileSummary,
   Provenance,
   RecruiterEmail,
@@ -59,6 +62,15 @@ export const api = {
 
   profile: () => request<ProfileSummary>("/api/profile"),
 
+  profileEdits: () => request<ProfileEdits>("/api/profile/edits"),
+
+  saveProfileEdits: (p: ProfileEdits) =>
+    request<ProfileEdits>("/api/profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p),
+    }),
+
   uploadProfile: (file: File) => {
     const form = new FormData();
     form.append("file", file);
@@ -102,6 +114,15 @@ export const api = {
     }),
 
   provenance: (id: string) => request<Provenance>(`/api/generations/${id}/provenance`),
+
+  available: (id: string) => request<AvailableContent>(`/api/generations/${id}/available`),
+
+  previewTailored: (id: string, t: Tailored) =>
+    request<PreviewResult>(`/api/generations/${id}/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(t),
+    }),
 
   followUp: (id: string) =>
     request<RecruiterEmail>(`/api/generations/${id}/followup`, { method: "POST" }),

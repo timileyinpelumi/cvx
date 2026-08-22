@@ -62,33 +62,74 @@ const (
 	targetFill = 0.95
 )
 
+// Layout is what the fit loop had to do to land on one page, and how full
+// that page ended up. A caller uses it to tell the user their profile is
+// too thin to fill a page, which is a content problem no renderer can fix.
+type Layout struct {
+	// Fill is the fraction of the usable height the content covers, 0 to 1.
+	Fill float64
+	// Trimmed lists what the fit loop dropped, weakest first.
+	Trimmed []string
+	// Stretched is true when spacing was opened up to reach the page.
+	Stretched bool
+}
+
 // Render typesets p and t into a PDF in the given style and returns the raw
-// document bytes. Layout runs as a bounded measure-and-refit: one measuring
-// pass, at most one refit pass (stretch under-full pages, tighten overflow) —
-// never a convergence loop, so rendering cost is capped at two typesets.
+// document bytes.
 func Render(p model.Profile, t model.Tailored, style Style) ([]byte, error) {
+	pdf, _, err := RenderWithLayout(p, t, style)
+	return pdf, err
+}
+
+// RenderWithLayout is Render plus what the layout had to do.
+//
+// The tailor deliberately selects more material than fits, ranked by
+// relevance, so layout is fit-to-page rather than fit-to-guess: typeset,
+// and while it spills past one page drop the least valuable thing left and
+// typeset again. A deep profile therefore ends at exactly one full page, and
+// a thin one keeps everything it has instead of being clamped to a
+// page-sized guess and then padded with white space.
+//
+// The loop is bounded by maxTrimSteps, and each step removes one line or one
+// item, so cost stays proportional to how much the model over-selected.
+func RenderWithLayout(p model.Profile, t model.Tailored, style Style) ([]byte, Layout, error) {
 	cfg := resolveTheme(style)
 	skillsFirst := style.Normalized().SkillsFirst
 
-	pdf, pages, fill := typeset(p, t, cfg, skillsFirst)
+	fitted := t.Clone()
+	pdf, pages, fill := typeset(p, fitted, cfg, skillsFirst)
 
-	if pages == 1 && fill < minFill {
-		pdf, _, _ = typeset(p, t, stretched(cfg, fill), skillsFirst)
-	} else if pages > 1 {
-		if pdf2, pages2, _ := typeset(p, t, tightened(cfg), skillsFirst); pages2 < pages {
-			pdf = pdf2
+	var layout Layout
+	for pages > 1 && len(layout.Trimmed) < model.MaxTrimSteps {
+		step, ok := fitted.Trim()
+		if !ok {
+			break
 		}
+		layout.Trimmed = append(layout.Trimmed, string(step))
+		pdf, pages, fill = typeset(p, fitted, cfg, skillsFirst)
 	}
 
+	if pages > 1 {
+		// Nothing left that may be dropped: pull the spacing in once, the
+		// way the old layout did, and accept the result either way.
+		if pdf2, pages2, fill2 := typeset(p, fitted, tightened(cfg), skillsFirst); pages2 < pages {
+			pdf, pages, fill = pdf2, pages2, fill2
+		}
+	} else if fill < minFill {
+		pdf, _, _ = typeset(p, fitted, stretched(cfg, fill), skillsFirst)
+		layout.Stretched = true
+	}
+	layout.Fill = fill
+
 	if err := pdf.Error(); err != nil {
-		return nil, err
+		return nil, layout, err
 	}
 
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
-		return nil, err
+		return nil, layout, err
 	}
-	return buf.Bytes(), nil
+	return buf.Bytes(), layout, nil
 }
 
 // typeset draws the whole document with cfg and reports how many pages it
@@ -113,6 +154,9 @@ func typeset(p model.Profile, t model.Tailored, cfg theme, skillsFirst bool) (*f
 	if !skillsFirst {
 		renderSkillsSection(pdf, cfg, t.SelectedSkills)
 	}
+	renderInlineSection(pdf, cfg, "Certifications", t.Certifications)
+	renderInlineSection(pdf, cfg, "Languages", t.Languages)
+	renderInlineSection(pdf, cfg, "Interests", t.Interests)
 
 	_, pageH := pdf.GetPageSize()
 	usable := pageH - cfg.marginTop - cfg.marginBottom
@@ -302,6 +346,21 @@ func renderSkillsSection(pdf *fpdf.Fpdf, cfg theme, skills []string) {
 	pdf.SetFont(cfg.bodyFamily, "", cfg.skillsPt)
 	pdf.SetTextColor(0, 0, 0)
 	pdf.MultiCell(w, lineHeight(cfg.skillsPt, cfg.leading), strings.Join(skills, "  ·  "), "", "L", false)
+}
+
+// renderInlineSection draws a one-line section: a title and the values on a
+// single wrapped line. Languages and interests are facts, not bodies of
+// work, so they get the least space a section can occupy.
+func renderInlineSection(pdf *fpdf.Fpdf, cfg theme, title string, values []string) {
+	if len(values) == 0 {
+		return
+	}
+	renderSectionTitle(pdf, cfg, title)
+
+	w := usableWidth(pdf)
+	pdf.SetFont(cfg.bodyFamily, "", cfg.skillsPt)
+	pdf.SetTextColor(0, 0, 0)
+	pdf.MultiCell(w, lineHeight(cfg.skillsPt, cfg.leading), strings.Join(values, "  ·  "), "", "L", false)
 }
 
 // renderSkillsTwoCol lays the skills out as two side-by-side columns,

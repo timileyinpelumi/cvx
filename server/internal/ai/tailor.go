@@ -78,10 +78,29 @@ Hard rules:
 - Every item and bullet you output MUST cite the exact "sourceId" /
   "sourceBulletId" of the profile item/bullet it comes from. Do not fabricate
   ids.
-- Select 3 to 5 items total, and 2 to 4 bullets per item. Never output an
+- Select 4 to 8 items total, and 2 to 5 bullets per item, every one of them
+  relevance-ordered: the renderer fits the page by dropping from the bottom
+  of your ranking, so selecting a weaker item costs nothing when the page is
+  full and saves a half-empty page when the profile is thin. Never output an
   item with a single bullet: give it a second one from the profile or leave
   the item out.
-- Select 6 to 14 skills.
+- Select 6 to 16 skills.
+- Group the items into sections by "kind": "experience", "projects",
+  "education", "certifications", "volunteering", or "other". One section per
+  kind, and "title" is the heading printed on the page ("Professional
+  experience", "Selected projects"). Only emit a section you have real items
+  for. Education, projects and volunteering belong on the page whenever the
+  profile has them and the experience alone is thin; leave them out when a
+  full page of directly relevant experience already exists.
+- "certifications", "languages" and "interests" are one-line sections copied
+  VERBATIM from the profile's own arrays of the same names (certifications by
+  their "name"), empty when the profile
+  has none. Include every certification the role could plausibly care about;
+  they are evidence, not filler. Languages and interests are the last thing
+  on the page and the first thing dropped
+  when it overflows, so include them whenever the profile has them: an
+  interest that speaks to the role (open source, speaking, community work)
+  earns its line, and the rest fill a page that would otherwise end early.
 - "selectedSkills" must contain only strings copied verbatim from the
   profile's top-level "skills" array — character for character, no additions
   and no reworded variants. A technology that appears in a bullet's text, or

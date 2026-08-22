@@ -6,6 +6,7 @@ package httpapi
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -71,6 +72,8 @@ func (s *Server) Register(e *echo.Echo) {
 	api.GET("/me", s.Auth.GetMe)
 	api.DELETE("/account", s.deleteAccount)
 	api.GET("/profile", s.getProfile)
+	api.GET("/profile/edits", s.getProfileEdits)
+	api.PUT("/profile", s.putProfile)
 	api.POST("/profile", s.postProfile)
 	api.POST("/profile/extend", s.postProfileExtend)
 	api.GET("/profile/history", s.getProfileHistory)
@@ -87,6 +90,8 @@ func (s *Server) Register(e *echo.Echo) {
 	api.GET("/generations/:id/tailored", s.getGenerationTailored)
 	api.GET("/generations/:id/provenance", s.getGenerationProvenance)
 	api.POST("/generations/:id/bullet", s.rewriteBullet)
+	api.POST("/generations/:id/preview", s.previewGeneration)
+	api.GET("/generations/:id/available", s.getAvailableContent)
 	api.POST("/generations/:id/followup", s.generateFollowUp)
 	api.PUT("/generations/:id", s.putGeneration)
 	api.PUT("/generations/:id/pin", s.putGenerationPin)
@@ -138,6 +143,58 @@ func (s *Server) getProfile(c echo.Context) error {
 		return errJSON(c, http.StatusNotFound, "no profile")
 	}
 	return c.JSON(http.StatusOK, summarize(*p))
+}
+
+// getProfileEdits returns the handful of facts the editor owns. Not the
+// whole profile: work history is read from the uploaded resume and extended
+// by note, and hand-editing it here would be a CV manager, which cvx is not.
+func (s *Server) getProfileEdits(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	p, err := s.Store.LoadProfile(userID)
+	if err != nil {
+		slog.Error("load profile failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if p == nil {
+		return errJSON(c, http.StatusNotFound, "no profile")
+	}
+	return c.JSON(http.StatusOK, model.EditsFrom(*p))
+}
+
+// putProfile saves those facts. Everything else in the profile is left
+// exactly as it was, and SaveProfile snapshots the outgoing version, so a
+// bad edit is one restore away.
+func (s *Server) putProfile(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	var edits model.ProfileEdits
+	if err := c.Bind(&edits); err != nil {
+		return errJSON(c, http.StatusBadRequest, "invalid request body")
+	}
+	if strings.TrimSpace(edits.Name) == "" {
+		return errJSON(c, http.StatusBadRequest, "your name is required")
+	}
+
+	stored, err := s.Store.LoadProfile(userID)
+	if err != nil {
+		slog.Error("load profile failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if stored == nil {
+		return errJSON(c, http.StatusConflict, "no profile")
+	}
+
+	updated := model.ApplyEdits(*stored, edits)
+	if err := s.Store.SaveProfile(userID, updated); err != nil {
+		slog.Error("save profile failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(http.StatusOK, model.EditsFrom(updated))
 }
 
 func (s *Server) postProfile(c echo.Context) error {
@@ -393,6 +450,10 @@ type generateResponse struct {
 	Fit            *model.Fit         `json:"fit,omitempty"`
 	Coverage       *model.Coverage    `json:"coverage,omitempty"`
 	ProseWarnings  []model.Ungrounded `json:"proseWarnings,omitempty"`
+	// PageFill is how much of the page the resume covers, 0 to 1, and
+	// PageAdvice is what would fill it when it fell short.
+	PageFill   float64  `json:"pageFill"`
+	PageAdvice []string `json:"pageAdvice,omitempty"`
 }
 
 func (s *Server) postGenerate(c echo.Context) error {
@@ -453,7 +514,7 @@ func (s *Server) postGenerate(c echo.Context) error {
 	model.NormalizeTailored(&tailored)
 
 	style := s.loadStyle(userID)
-	pdf, err := pdfgen.Render(*p, tailored, style)
+	pdf, layout, err := pdfgen.RenderWithLayout(*p, tailored, style)
 	if err == nil {
 		// Read our own output back with the extractor an ATS would use. A
 		// failure here means the page does not say what the pipeline thinks
@@ -560,6 +621,11 @@ func (s *Server) postGenerate(c echo.Context) error {
 		}
 	}
 
+	pageAdvice := model.PageAdvice(*p, layout.Fill, len(layout.Trimmed))
+	if len(pageAdvice) > 0 {
+		slog.Info("resume did not fill the page", "fill", layout.Fill, "advice", len(pageAdvice))
+	}
+
 	coverage := model.CoverageOf(posting, tailored)
 	fit := model.FitOf(posting, tailored, coverage)
 
@@ -575,6 +641,8 @@ func (s *Server) postGenerate(c echo.Context) error {
 		Fit:            &fit,
 		Coverage:       &coverage,
 		ProseWarnings:  proseWarnings,
+		PageFill:       layout.Fill,
+		PageAdvice:     pageAdvice,
 	})
 }
 
@@ -722,6 +790,161 @@ func daysSince(stamp string) int {
 		return 0
 	}
 	return int(time.Since(t).Hours() / 24)
+}
+
+// previewResponse carries a rendered but unsaved resume: the PDF inline as
+// base64 so one request answers both "what does it look like" and "does it
+// fit", plus what the fit loop had to do to land it on a page.
+type previewResponse struct {
+	PDF        string   `json:"pdf"`
+	Fill       float64  `json:"fill"`
+	Trimmed    []string `json:"trimmed"`
+	Stretched  bool     `json:"stretched"`
+	PageAdvice []string `json:"pageAdvice,omitempty"`
+}
+
+// previewGeneration renders the working copy without storing anything, so
+// the editor can show the real page while it is being edited. Editing blind
+// and finding out at save time is the whole problem this removes.
+func (s *Server) previewGeneration(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	var t model.Tailored
+	if err := c.Bind(&t); err != nil {
+		return errJSON(c, http.StatusBadRequest, "invalid request body")
+	}
+
+	p, err := s.Store.LoadProfile(userID)
+	if err != nil {
+		slog.Error("load profile failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if p == nil {
+		return errJSON(c, http.StatusConflict, "no profile")
+	}
+	if err := model.ValidateTailored(*p, t); err != nil {
+		return errJSON(c, http.StatusUnprocessableEntity, err.Error())
+	}
+	model.NormalizeTailored(&t)
+
+	pdf, layout, err := pdfgen.RenderWithLayout(*p, t, s.loadStyle(userID))
+	if err != nil {
+		slog.Error("preview render failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(http.StatusOK, previewResponse{
+		PDF:        base64.StdEncoding.EncodeToString(pdf),
+		Fill:       layout.Fill,
+		Trimmed:    model.NonNil(layout.Trimmed),
+		Stretched:  layout.Stretched,
+		PageAdvice: model.PageAdvice(*p, layout.Fill, len(layout.Trimmed)),
+	})
+}
+
+// availableBullet and availableItem are profile content that is NOT on the
+// resume: what the tailor left out, offered back to the user. The ids are
+// the profile's own, so adding them keeps the citation guardrail satisfied.
+type availableBullet struct {
+	SourceBulletID string `json:"sourceBulletId"`
+	Text           string `json:"text"`
+}
+
+type availableItem struct {
+	SourceID     string            `json:"sourceId"`
+	Kind         string            `json:"kind"`
+	Title        string            `json:"title"`
+	Organization string            `json:"organization"`
+	Dates        string            `json:"dates"`
+	OnResume     bool              `json:"onResume"`
+	Bullets      []availableBullet `json:"bullets"`
+}
+
+type availableResponse struct {
+	Items          []availableItem `json:"items"`
+	Skills         []string        `json:"skills"`
+	Certifications []string        `json:"certifications"`
+	Languages      []string        `json:"languages"`
+	Interests      []string        `json:"interests"`
+}
+
+// getAvailableContent lists what the profile holds that this resume does not
+// use yet. The tailor deliberately over-selects and the renderer trims to the
+// page, which means material the model skipped is otherwise invisible and
+// unreachable: this is what makes the editor additive instead of only
+// subtractive.
+func (s *Server) getAvailableContent(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	p, err := s.Store.LoadProfile(userID)
+	if err != nil {
+		slog.Error("load profile failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if p == nil {
+		return errJSON(c, http.StatusConflict, "no profile")
+	}
+	t, found, err := s.Store.GetGenerationTailored(userID, c.Param("id"))
+	if err != nil {
+		slog.Error("load generation failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if !found {
+		return errJSON(c, http.StatusNotFound, "no such generation")
+	}
+
+	usedItems, usedBullets := map[string]bool{}, map[string]bool{}
+	for _, sec := range t.Sections {
+		for _, it := range sec.Items {
+			usedItems[it.SourceID] = true
+			for _, b := range it.Bullets {
+				usedBullets[b.SourceBulletID] = true
+			}
+		}
+	}
+
+	out := availableResponse{Items: []availableItem{}}
+	for _, item := range p.Items {
+		avail := availableItem{
+			SourceID:     item.ID,
+			Kind:         item.Kind,
+			Title:        item.Title,
+			Organization: item.Organization,
+			Dates:        item.DateRange(),
+			OnResume:     usedItems[item.ID],
+			Bullets:      []availableBullet{},
+		}
+		for _, b := range item.Bullets {
+			if usedBullets[b.ID] {
+				continue
+			}
+			avail.Bullets = append(avail.Bullets, availableBullet{SourceBulletID: b.ID, Text: b.Text})
+		}
+		// An item already on the resume with every bullet used has nothing
+		// left to offer.
+		if avail.OnResume && len(avail.Bullets) == 0 {
+			continue
+		}
+		out.Items = append(out.Items, avail)
+	}
+
+	out.Skills = model.NonNil(p.Skills)
+	out.Certifications = model.NonNil(certificationNames(*p))
+	out.Languages = model.NonNil(p.Languages)
+	out.Interests = model.NonNil(p.Interests)
+	return c.JSON(http.StatusOK, out)
+}
+
+func certificationNames(p model.Profile) []string {
+	out := make([]string, 0, len(p.Certifications))
+	for _, c := range p.Certifications {
+		out = append(out, c.Name)
+	}
+	return out
 }
 
 type rewriteBulletRequest struct {

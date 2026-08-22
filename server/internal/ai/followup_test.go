@@ -20,7 +20,9 @@ func TestFollowUpComposesGreetingAndCarriesTheWait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if re.Greeting != "Hello Jane," {
+	// The opener varies per draft; the addressee comes from the posting and
+	// must not.
+	if !strings.HasSuffix(re.Greeting, " Jane,") {
 		t.Fatalf("greeting not composed from the posting: %q", re.Greeting)
 	}
 	joined := ""

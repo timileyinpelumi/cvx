@@ -3,6 +3,7 @@ package model
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -27,6 +28,15 @@ type Link struct {
 	URL   string `json:"url"`
 }
 
+// Certification is a credential with a name and, when the source says so,
+// who issued it and when. Kept out of Items because it has no bullets and no
+// date range: it is a fact, not a body of work.
+type Certification struct {
+	Name   string `json:"name"`
+	Issuer string `json:"issuer"`
+	Year   string `json:"year"`
+}
+
 type Profile struct {
 	Name     string   `json:"name"`
 	Email    string   `json:"email"`
@@ -36,6 +46,13 @@ type Profile struct {
 	Links    []Link   `json:"links"`
 	Skills   []string `json:"skills"`
 	Items    []Item   `json:"items"`
+
+	// The material that has no home among Items and that a thin resume
+	// needs: standard optional sections, rendered only when the page has
+	// room and only from what the profile actually holds.
+	Certifications []Certification `json:"certifications"`
+	Languages      []string        `json:"languages"`
+	Interests      []string        `json:"interests"`
 }
 
 type TBullet struct {
@@ -51,7 +68,33 @@ type TItem struct {
 	Bullets      []TBullet `json:"bullets"`
 }
 
+// Section kinds. Kind drives page order and what may be trimmed first when
+// the page overflows; Title is still the words printed on the page, because
+// "Professional experience" and "Selected projects" are the tailor's call.
+const (
+	SectionExperience     = "experience"
+	SectionProjects       = "projects"
+	SectionEducation      = "education"
+	SectionCertifications = "certifications"
+	SectionVolunteering   = "volunteering"
+	SectionOther          = "other"
+)
+
+// sectionRank fixes the order sections print in, whatever order the model
+// returned them. Experience leads unless the user asked for skills first;
+// everything else follows in descending order of how much a hiring decision
+// turns on it.
+var sectionRank = map[string]int{
+	SectionExperience:     0,
+	SectionProjects:       1,
+	SectionEducation:      2,
+	SectionCertifications: 3,
+	SectionVolunteering:   4,
+	SectionOther:          5,
+}
+
 type TSection struct {
+	Kind  string  `json:"kind"`
 	Title string  `json:"title"`
 	Items []TItem `json:"items"`
 }
@@ -69,8 +112,30 @@ type Tailored struct {
 	Summary        string     `json:"summary"`
 	SelectedSkills []string   `json:"selectedSkills"`
 	Sections       []TSection `json:"sections"`
-	Gaps           []Gap      `json:"gaps"`
-	WhatChanged    []string   `json:"whatChanged"`
+	// Certifications, Languages and Interests are one-line sections, copied
+	// verbatim from the profile. Certifications stand on their own merit;
+	// the other two exist to finish a page that real experience does not
+	// fill, so they are the first things dropped when it overflows.
+	Certifications []string `json:"certifications"`
+	Languages      []string `json:"languages"`
+	Interests      []string `json:"interests"`
+	Gaps           []Gap    `json:"gaps"`
+	WhatChanged    []string `json:"whatChanged"`
+}
+
+// DateRange renders an item's dates the way the resume prints them, so
+// content added in the editor is formatted the same as content the tailor
+// selected.
+func (i Item) DateRange() string {
+	start, end := strings.TrimSpace(i.StartDate), strings.TrimSpace(i.EndDate)
+	switch {
+	case start != "" && end != "":
+		return start + " – " + end
+	case start != "":
+		return start + " – Present"
+	default:
+		return end
+	}
 }
 
 func AssignIDs(p *Profile) {
@@ -103,6 +168,58 @@ func ValidateTailored(p Profile, t Tailored) error {
 			}
 		}
 	}
+
+	// Languages and interests carry no ids, so they are guarded the way
+	// selectedSkills is: verbatim membership. A resume may not learn a
+	// language on the way to the page.
+	if err := verbatimSubset("certification", t.Certifications, certificationNames(p)); err != nil {
+		return err
+	}
+	if err := verbatimSubset("language", t.Languages, p.Languages); err != nil {
+		return err
+	}
+	if err := verbatimSubset("interest", t.Interests, p.Interests); err != nil {
+		return err
+	}
+	return nil
+}
+
+// appendDeduped appends the entries of add that base does not already hold,
+// compared case-insensitively, preserving order.
+func appendDeduped(base, add []string) []string {
+	have := map[string]bool{}
+	for _, b := range base {
+		have[strings.ToLower(strings.TrimSpace(b))] = true
+	}
+	for _, a := range add {
+		key := strings.ToLower(strings.TrimSpace(a))
+		if key == "" || have[key] {
+			continue
+		}
+		have[key] = true
+		base = append(base, strings.TrimSpace(a))
+	}
+	return base
+}
+
+func certificationNames(p Profile) []string {
+	out := make([]string, 0, len(p.Certifications))
+	for _, c := range p.Certifications {
+		out = append(out, c.Name)
+	}
+	return out
+}
+
+func verbatimSubset(label string, got, allowed []string) error {
+	have := map[string]bool{}
+	for _, a := range allowed {
+		have[strings.ToLower(strings.TrimSpace(a))] = true
+	}
+	for _, g := range got {
+		if !have[strings.ToLower(strings.TrimSpace(g))] {
+			return fmt.Errorf("tailored output invented a %s not in the profile: %s", label, g)
+		}
+	}
 	return nil
 }
 
@@ -117,16 +234,25 @@ const (
 // The resume content standard: hard ceilings NormalizeTailored clamps every
 // generation to, whatever the LLM emitted. Lists are relevance-ordered by the
 // tailor contract, so trimming from the bottom always drops the weakest.
+//
+// The item and bullet ceilings are deliberately above what fits a page. The
+// renderer trims to the page from the bottom of this relevance order, which
+// means a thin profile gets everything it has and a deep one still gets
+// exactly one page. Clamping to a page-sized guess up here is what left
+// real material on the floor and the page half empty.
 const (
-	maxResumeItems   = 5
-	maxItemBullets   = 4
-	maxHeadlineChars = 110
-	maxSummaryWords  = MaxSummaryWords
-	maxTargetRole    = 64
-	maxRoleSummary   = 150
-	maxResumeSkills  = 14
-	maxWhatChanged   = 4
-	maxGapsListed    = 6
+	maxResumeItems    = 8
+	maxItemBullets    = 5
+	maxHeadlineChars  = 110
+	maxSummaryWords   = MaxSummaryWords
+	maxTargetRole     = 64
+	maxRoleSummary    = 150
+	maxResumeSkills   = 16
+	maxCertifications = 6
+	maxLanguages      = 6
+	maxInterests      = 6
+	maxWhatChanged    = 4
+	maxGapsListed     = 6
 )
 
 // The other half of the content standard: floors. A ceiling can be enforced
@@ -230,6 +356,7 @@ func NormalizeTailored(t *Tailored) {
 		}
 	}
 	t.Sections = sections
+	sortSections(t.Sections)
 
 	t.TargetRole = cutAtWord(dropParenthetical(t.TargetRole), maxTargetRole)
 	t.RoleSummary = cutAtWord(t.RoleSummary, maxRoleSummary)
@@ -238,6 +365,15 @@ func NormalizeTailored(t *Tailored) {
 
 	if len(t.SelectedSkills) > maxResumeSkills {
 		t.SelectedSkills = t.SelectedSkills[:maxResumeSkills]
+	}
+	if len(t.Certifications) > maxCertifications {
+		t.Certifications = t.Certifications[:maxCertifications]
+	}
+	if len(t.Languages) > maxLanguages {
+		t.Languages = t.Languages[:maxLanguages]
+	}
+	if len(t.Interests) > maxInterests {
+		t.Interests = t.Interests[:maxInterests]
 	}
 	if len(t.WhatChanged) > maxWhatChanged {
 		t.WhatChanged = t.WhatChanged[:maxWhatChanged]
@@ -286,6 +422,148 @@ func voiceIssues(label, text, candidateName string) []string {
 				label, part))
 			break
 		}
+	}
+	return out
+}
+
+// sortSections puts the page in reading order by kind, keeping the model's
+// order within a kind. Stable so two sections of the same kind stay as the
+// tailor ranked them.
+func sortSections(sections []TSection) {
+	sort.SliceStable(sections, func(i, j int) bool {
+		return sectionOrder(sections[i].Kind) < sectionOrder(sections[j].Kind)
+	})
+}
+
+func sectionOrder(kind string) int {
+	if r, ok := sectionRank[strings.ToLower(strings.TrimSpace(kind))]; ok {
+		return r
+	}
+	return sectionRank[SectionOther]
+}
+
+// TrimStep names what a Trim call removed, so a caller can log or explain
+// why the page holds less than the tailor selected.
+type TrimStep string
+
+// MaxTrimSteps bounds the fit loop. Each step is one line or one item; more
+// than this many and the content was never going to fit a page.
+const MaxTrimSteps = 16
+
+// Trim removes the single least valuable thing left on the resume and
+// reports what went, or ("", false) when there is nothing left that may be
+// dropped. It is the other half of over-selecting: the tailor ranks more
+// material than fits, and the renderer takes the page back down to one page
+// from the bottom of that ranking.
+//
+// The order is the reverse of how much a hiring decision turns on each
+// thing: the optional one-line sections first, then the tail of an optional
+// section, then the weakest bullet of the fattest item, then the last item.
+func (t *Tailored) Trim() (TrimStep, bool) {
+	if len(t.Interests) > 0 {
+		t.Interests = nil
+		return "interests", true
+	}
+	if len(t.Languages) > 0 {
+		t.Languages = nil
+		return "languages", true
+	}
+	// Certifications outrank the other two lines: a credential the posting
+	// asks for is evidence, not filler. They still go before any experience.
+	if len(t.Certifications) > 0 {
+		t.Certifications = nil
+		return "certifications", true
+	}
+	if step, ok := t.trimOptionalSectionTail(); ok {
+		return step, true
+	}
+	if step, ok := t.trimFattestItemBullet(); ok {
+		return step, true
+	}
+	return t.trimLastItem()
+}
+
+// trimOptionalSectionTail drops the last item of the last section that is
+// not experience: a fourth project earns its place only while the page has
+// room for it.
+func (t *Tailored) trimOptionalSectionTail() (TrimStep, bool) {
+	for i := len(t.Sections) - 1; i >= 0; i-- {
+		s := &t.Sections[i]
+		if sectionOrder(s.Kind) == sectionRank[SectionExperience] || len(s.Items) == 0 {
+			continue
+		}
+		dropped := s.Items[len(s.Items)-1]
+		s.Items = s.Items[:len(s.Items)-1]
+		if len(s.Items) == 0 {
+			t.Sections = append(t.Sections[:i], t.Sections[i+1:]...)
+		}
+		return TrimStep(fmt.Sprintf("%s: %s", s.Title, dropped.Title)), true
+	}
+	return "", false
+}
+
+// trimFattestItemBullet takes one bullet from whichever item has the most,
+// so the page loses its most repetitive line rather than gutting one item.
+func (t *Tailored) trimFattestItemBullet() (TrimStep, bool) {
+	var target *TItem
+	for si := range t.Sections {
+		for ii := range t.Sections[si].Items {
+			it := &t.Sections[si].Items[ii]
+			if len(it.Bullets) > minItemBullets && (target == nil || len(it.Bullets) > len(target.Bullets)) {
+				target = it
+			}
+		}
+	}
+	if target == nil {
+		return "", false
+	}
+	target.Bullets = target.Bullets[:len(target.Bullets)-1]
+	return TrimStep(fmt.Sprintf("a bullet from %s", target.Title)), true
+}
+
+// trimLastItem is the last resort, and it stops at the floor: a resume with
+// fewer than minResumeItems items has stopped being a resume.
+func (t *Tailored) trimLastItem() (TrimStep, bool) {
+	total := 0
+	for _, s := range t.Sections {
+		total += len(s.Items)
+	}
+	if total <= minResumeItems {
+		return "", false
+	}
+	for i := len(t.Sections) - 1; i >= 0; i-- {
+		s := &t.Sections[i]
+		if len(s.Items) == 0 {
+			continue
+		}
+		dropped := s.Items[len(s.Items)-1]
+		s.Items = s.Items[:len(s.Items)-1]
+		if len(s.Items) == 0 {
+			t.Sections = append(t.Sections[:i], t.Sections[i+1:]...)
+		}
+		return TrimStep(dropped.Title), true
+	}
+	return "", false
+}
+
+// Clone returns a deep copy, so the renderer can trim a resume to the page
+// without changing the one that was stored.
+func (t Tailored) Clone() Tailored {
+	out := t
+	out.SelectedSkills = append([]string(nil), t.SelectedSkills...)
+	out.Certifications = append([]string(nil), t.Certifications...)
+	out.Languages = append([]string(nil), t.Languages...)
+	out.Interests = append([]string(nil), t.Interests...)
+	out.Gaps = append([]Gap(nil), t.Gaps...)
+	out.WhatChanged = append([]string(nil), t.WhatChanged...)
+	out.Sections = make([]TSection, len(t.Sections))
+	for i, s := range t.Sections {
+		s.Items = make([]TItem, len(t.Sections[i].Items))
+		for j, it := range t.Sections[i].Items {
+			it.Bullets = append([]TBullet(nil), t.Sections[i].Items[j].Bullets...)
+			s.Items[j] = it
+		}
+		out.Sections[i] = s
 	}
 	return out
 }
@@ -431,6 +709,13 @@ type ProfileAdditions struct {
 	NewSkills       []string         `json:"newSkills"`
 	NewItems        []ItemDraft      `json:"newItems"`
 	BulletAdditions []BulletAddition `json:"bulletAdditions"`
+
+	// The optional material a note can also carry. A resume that ends
+	// half-way down the page is usually missing exactly this, and asking the
+	// user for it is the only honest way to fill the space.
+	NewCertifications []Certification `json:"newCertifications"`
+	NewLanguages      []string        `json:"newLanguages"`
+	NewInterests      []string        `json:"newInterests"`
 }
 
 // MergeAdditions applies a into p in place: new skills are appended deduped
@@ -467,6 +752,22 @@ func MergeAdditions(p *Profile, a ProfileAdditions) error {
 		}
 		existingSkills[key] = true
 		p.Skills = append(p.Skills, sk)
+	}
+
+	p.Languages = appendDeduped(p.Languages, a.NewLanguages)
+	p.Interests = appendDeduped(p.Interests, a.NewInterests)
+
+	haveCert := map[string]bool{}
+	for _, c := range p.Certifications {
+		haveCert[strings.ToLower(strings.TrimSpace(c.Name))] = true
+	}
+	for _, c := range a.NewCertifications {
+		key := strings.ToLower(strings.TrimSpace(c.Name))
+		if key == "" || haveCert[key] {
+			continue
+		}
+		haveCert[key] = true
+		p.Certifications = append(p.Certifications, c)
 	}
 
 	// len(p.Items) is only a valid source of fresh, unused item-N ids because

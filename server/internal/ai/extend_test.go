@@ -82,7 +82,8 @@ func TestExtendProfileSchemaShape(t *testing.T) {
 	if !ok {
 		t.Fatalf("required is not []string: %v", profileAdditionsSchema["required"])
 	}
-	want := []string{"useful", "notUsefulReason", "newSkills", "newItems", "bulletAdditions"}
+	want := []string{"useful", "notUsefulReason", "newSkills", "newCertifications",
+		"newLanguages", "newInterests", "newItems", "bulletAdditions"}
 	if len(req) != len(want) {
 		t.Fatalf("required = %v, want %v", req, want)
 	}
