@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -145,6 +146,21 @@ func main() {
 			return mail.SendRecruiter(to, re, name, pdf, filename, "")
 		},
 		Auth: authGate,
+		LifecycleMail: func(kind, to, name string) {
+			var err error
+			switch kind {
+			case httpapi.MailWelcome:
+				_, err = mail.SendWelcome(to, name, "")
+			case httpapi.MailFarewell:
+				_, err = mail.SendFarewell(to, name, "")
+			}
+			if err != nil {
+				slog.Warn("lifecycle email failed", "kind", kind, "err", err)
+			}
+		},
+	}
+	authGate.OnSignup = func(email, name string) {
+		srv.LifecycleMail(httpapi.MailWelcome, email, name)
 	}
 
 	e := echo.New()
@@ -177,6 +193,7 @@ func main() {
 		},
 	}))
 	e.Use(middleware.Recover())
+	httpapi.Security(e, production)
 	e.GET("/healthz", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 	srv.Register(e)
 
@@ -184,6 +201,15 @@ func main() {
 	if addr == "" {
 		addr = ":8080"
 	}
+	// Slowloris and half-open connections: a header that never finishes
+	// should not hold a connection open. Write and idle timeouts are
+	// generous because a generation legitimately takes tens of seconds.
+	e.Server.ReadHeaderTimeout = 10 * time.Second
+	e.Server.ReadTimeout = 60 * time.Second
+	e.Server.WriteTimeout = 5 * time.Minute
+	e.Server.IdleTimeout = 2 * time.Minute
+	e.Server.MaxHeaderBytes = 1 << 20
+
 	if err := e.Start(addr); err != nil {
 		slog.Error("server stopped", "err", err)
 		os.Exit(1)

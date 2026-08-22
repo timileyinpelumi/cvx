@@ -48,6 +48,9 @@ type Server struct {
 	Store *store.Store
 	LLM   ai.LLM
 	Mail  func(to string, t model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error)
+	// LifecycleMail sends an account email (welcome, farewell). Optional:
+	// nil means the deployment has no mail provider configured.
+	LifecycleMail func(kind, to, name string)
 	// RecruiterMail sends the forwardable recruiter-facing email instead of
 	// the private notification when a generation requests it.
 	RecruiterMail func(to string, re model.RecruiterEmail, name string, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error)
@@ -58,9 +61,14 @@ func (s *Server) Register(e *echo.Echo) {
 	// /auth/* is registered directly on e, outside the /api group, so it
 	// never runs through the group's own auth middleware below — these
 	// routes are how a session gets established in the first place.
+	// Expensive routes carry their own tighter limiter and a per-account
+	// concurrency gate on top of the global one.
+	costly := costlyMiddleware()
+	signIn := authMiddleware()
+
 	e.GET("/auth/providers", s.Auth.ListProviders)
-	e.GET("/auth/:provider/start", s.Auth.AuthStart)
-	e.GET("/auth/:provider/callback", s.Auth.AuthCallback)
+	e.GET("/auth/:provider/start", s.Auth.AuthStart, signIn)
+	e.GET("/auth/:provider/callback", s.Auth.AuthCallback, signIn)
 
 	// /api/logout is also registered outside the guarded group: a bad or
 	// expired session cookie must still be clearable, not stuck behind the
@@ -74,13 +82,13 @@ func (s *Server) Register(e *echo.Echo) {
 	api.GET("/profile", s.getProfile)
 	api.GET("/profile/edits", s.getProfileEdits)
 	api.PUT("/profile", s.putProfile)
-	api.POST("/profile", s.postProfile)
-	api.POST("/profile/extend", s.postProfileExtend)
+	api.POST("/profile", s.postProfile, costly...)
+	api.POST("/profile/extend", s.postProfileExtend, costly...)
 	api.GET("/profile/history", s.getProfileHistory)
 	api.POST("/profile/restore", s.postProfileRestore)
 	api.GET("/profile/skills", s.getSkills)
 	api.PUT("/profile/skills", s.putSkills)
-	api.POST("/generate", s.postGenerate)
+	api.POST("/generate", s.postGenerate, costly...)
 	api.GET("/generations", s.listGenerations)
 	api.GET("/gaps", s.getGaps)
 	api.GET("/settings", s.getSettings)
@@ -89,11 +97,11 @@ func (s *Server) Register(e *echo.Echo) {
 	api.DELETE("/generations/:id", s.deleteGeneration)
 	api.GET("/generations/:id/tailored", s.getGenerationTailored)
 	api.GET("/generations/:id/provenance", s.getGenerationProvenance)
-	api.POST("/generations/:id/bullet", s.rewriteBullet)
-	api.POST("/generations/:id/preview", s.previewGeneration)
+	api.POST("/generations/:id/bullet", s.rewriteBullet, costly...)
+	api.POST("/generations/:id/preview", s.previewGeneration, costly...)
 	api.GET("/generations/:id/available", s.getAvailableContent)
-	api.POST("/generations/:id/followup", s.generateFollowUp)
-	api.PUT("/generations/:id", s.putGeneration)
+	api.POST("/generations/:id/followup", s.generateFollowUp, costly...)
+	api.PUT("/generations/:id", s.putGeneration, costly...)
 	api.PUT("/generations/:id/pin", s.putGenerationPin)
 	api.PUT("/generations/:id/status", s.putGenerationStatus)
 	api.GET("/generations/:id/pdf", s.getGenerationPDF)
@@ -110,6 +118,13 @@ func summarize(p model.Profile) profileSummary {
 	return profileSummary{Name: p.Name, ItemCount: len(p.Items), SkillCount: len(p.Skills)}
 }
 
+// Lifecycle email kinds, so the wiring in main stays a switch on a constant
+// rather than on a loose string.
+const (
+	MailWelcome  = "welcome"
+	MailFarewell = "farewell"
+)
+
 func errJSON(c echo.Context, status int, msg string) error {
 	return c.JSON(status, map[string]string{"error": msg})
 }
@@ -122,9 +137,21 @@ func (s *Server) deleteAccount(c echo.Context) error {
 	if !ok {
 		return errJSON(c, http.StatusUnauthorized, "unauthorized")
 	}
+	// Read the address before closing the account: afterwards the row's
+	// email is tombstoned and no longer deliverable.
+	var email, name string
+	if u, err := s.Store.GetUser(userID); err != nil {
+		slog.Warn("delete account: user lookup failed", "err", err)
+	} else if u != nil {
+		email, name = u.Email, u.Name
+	}
+
 	if err := s.Store.SoftDeleteUser(userID); err != nil {
 		slog.Error("delete account failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if s.LifecycleMail != nil && email != "" {
+		go s.LifecycleMail(MailFarewell, email, name)
 	}
 	return s.Auth.Logout(c)
 }

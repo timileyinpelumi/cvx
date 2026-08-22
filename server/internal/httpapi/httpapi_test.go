@@ -195,7 +195,7 @@ func devAuth(st *store.Store) *auth.Auth {
 // later query as.
 func devUserID(t *testing.T, st *store.Store) int64 {
 	t.Helper()
-	u, err := st.UpsertUser("dev", "dev@test.local", "dev@test.local", "dev@test.local")
+	u, _, err := st.UpsertUser("dev", "dev@test.local", "dev@test.local", "dev@test.local")
 	if err != nil {
 		t.Fatal(err)
 	}

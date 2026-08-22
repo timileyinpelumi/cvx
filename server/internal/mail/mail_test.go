@@ -303,3 +303,55 @@ func stripTags(h string) string {
 	}
 	return strings.TrimSpace(b.String())
 }
+
+func TestSendWelcomeAndFarewell(t *testing.T) {
+	t.Setenv("RESEND_API_KEY", "test-key")
+	t.Setenv("CVX_BASE_URL", "https://cvx.example.com")
+
+	var got sendRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Error(err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	if ok, err := SendWelcome("me@example.com", "Ada Lovelace", srv.URL); err != nil || !ok {
+		t.Fatalf("welcome: %v, %v", ok, err)
+	}
+	if got.Subject != "Welcome to cvx, Ada" {
+		t.Fatalf("subject: %q", got.Subject)
+	}
+	// Every email carries a text part: without one it reads as spam.
+	if got.Text == "" || !strings.Contains(got.Text, "cvx.example.com") {
+		t.Fatalf("text part: %q", got.Text)
+	}
+	if !strings.Contains(got.HTML, "https://cvx.example.com/account") {
+		t.Fatal("welcome email has no way back into the app")
+	}
+	if len(got.Attachments) != 0 {
+		t.Fatal("a welcome email should carry no attachments")
+	}
+
+	if ok, err := SendFarewell("me@example.com", "Ada Lovelace", srv.URL); err != nil || !ok {
+		t.Fatalf("farewell: %v, %v", ok, err)
+	}
+	if got.Subject != "Your cvx account is closed" {
+		t.Fatalf("subject: %q", got.Subject)
+	}
+	if !strings.Contains(got.Text, "new, empty account") {
+		t.Fatalf("farewell should say what happens next: %q", got.Text)
+	}
+}
+
+// No API key means no network call, for every sender.
+func TestLifecycleMailIsGated(t *testing.T) {
+	t.Setenv("RESEND_API_KEY", "")
+	if ok, err := SendWelcome("me@example.com", "Ada", "http://127.0.0.1:1"); err != nil || ok {
+		t.Fatalf("want false,nil got %v,%v", ok, err)
+	}
+	if ok, err := SendFarewell("me@example.com", "Ada", "http://127.0.0.1:1"); err != nil || ok {
+		t.Fatalf("want false,nil got %v,%v", ok, err)
+	}
+}

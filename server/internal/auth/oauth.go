@@ -190,10 +190,15 @@ func (a *Auth) AuthCallback(c echo.Context) error {
 		return c.Redirect(http.StatusFound, "/?error=forbidden")
 	}
 
-	u, err := a.Store.UpsertUser(p.Name, providerID, email, name)
+	u, created, err := a.Store.UpsertUser(p.Name, providerID, email, name)
 	if err != nil {
 		slog.Error("upsert user failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, "internal error")
+	}
+	if created && a.OnSignup != nil {
+		// Off the request path: a slow mail provider must not sit between
+		// someone and the app they just signed in to.
+		go a.OnSignup(u.Email, u.Name)
 	}
 
 	c.SetCookie(&http.Cookie{

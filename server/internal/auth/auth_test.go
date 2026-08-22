@@ -112,7 +112,7 @@ func TestOAuthModeValidCookieAuthenticates(t *testing.T) {
 	a := &Auth{Store: st, SessionSecret: "secret"}
 	e := echoWithGuardedRoute(a)
 
-	u, err := st.UpsertUser("google", "g-1", "a@e.com", "A")
+	u, _, err := st.UpsertUser("google", "g-1", "a@e.com", "A")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -30,11 +30,57 @@ type attachment struct {
 }
 
 type sendRequest struct {
-	From        string       `json:"from"`
-	To          string       `json:"to"`
-	Subject     string       `json:"subject"`
-	HTML        string       `json:"html"`
-	Attachments []attachment `json:"attachments"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Subject string `json:"subject"`
+	HTML    string `json:"html"`
+	// Text is the plain-text alternative. Every email carries one: it is
+	// what a screen reader and a text-only client get, and a message with
+	// no text part looks like spam to most filters.
+	Text        string       `json:"text,omitempty"`
+	Attachments []attachment `json:"attachments,omitempty"`
+}
+
+// post sends one prepared email. Shared by every sender so the gate (no API
+// key, no recipient, no call) and the error handling live in one place.
+func post(endpoint string, req sendRequest) (bool, error) {
+	apiKey := os.Getenv("RESEND_API_KEY")
+	if apiKey == "" || req.To == "" {
+		return false, nil
+	}
+	if endpoint == "" {
+		endpoint = defaultEndpoint
+	}
+	if req.From == "" {
+		if req.From = os.Getenv("CVX_EMAIL_FROM"); req.From == "" {
+			req.From = defaultFrom
+		}
+	}
+
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return false, fmt.Errorf("mail: marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return false, fmt.Errorf("mail: build request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: requestTimeout}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return false, fmt.Errorf("mail: send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return false, fmt.Errorf("mail: resend returned status %d: %s", resp.StatusCode, string(body))
+	}
+	return true, nil
 }
 
 // Attachment is an additional file to send alongside the primary resume PDF
@@ -77,39 +123,14 @@ func Send(to string, t model.Tailored, pdf []byte, filename string, endpoint str
 		names = append(names, a.Filename)
 	}
 
-	reqBody := sendRequest{
+	return post(endpoint, sendRequest{
 		From:        from,
 		To:          to,
 		Subject:     fmt.Sprintf("Your resume for %s is ready", t.TargetRole),
 		HTML:        renderNotification(t, names),
+		Text:        notificationText(t, names),
 		Attachments: attachments,
-	}
-
-	payload, err := json.Marshal(reqBody)
-	if err != nil {
-		return false, fmt.Errorf("mail: marshal request: %w", err)
-	}
-
-	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(payload))
-	if err != nil {
-		return false, fmt.Errorf("mail: build request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: requestTimeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return false, fmt.Errorf("mail: send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("mail: resend returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	return true, nil
+	})
 }
 
 // SendRecruiter posts the forwardable recruiter-facing email: just the
@@ -137,39 +158,14 @@ func SendRecruiter(to string, re model.RecruiterEmail, name string, pdf []byte, 
 		attachments = append(attachments, attachment{Filename: a.Filename, Content: base64.StdEncoding.EncodeToString(a.Content)})
 	}
 
-	reqBody := sendRequest{
+	return post(endpoint, sendRequest{
 		From:        from,
 		To:          to,
 		Subject:     re.Subject,
 		HTML:        renderRecruiter(re, name),
+		Text:        recruiterText(re, name),
 		Attachments: attachments,
-	}
-
-	payload, err := json.Marshal(reqBody)
-	if err != nil {
-		return false, fmt.Errorf("mail: marshal request: %w", err)
-	}
-
-	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(payload))
-	if err != nil {
-		return false, fmt.Errorf("mail: build request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: requestTimeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return false, fmt.Errorf("mail: send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("mail: resend returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	return true, nil
+	})
 }
 
 // Email palette: the app's machine-and-paper theme in its light form. Email
@@ -191,6 +187,15 @@ const (
 // with title and subtitle, and a quiet footer explaining why the email came.
 func shell(title, subtitle, body, footer string) string {
 	var b strings.Builder
+
+	// Tell the client this design is light-only, so it tints rather than
+	// inverts, and hide the preheader that would otherwise show as a naked
+	// line of text in the inbox list.
+	b.WriteString(`<meta name="color-scheme" content="light">`)
+	fmt.Fprintf(&b,
+		`<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">%s</div>`,
+		html.EscapeString(subtitle))
+
 	fmt.Fprintf(&b, `<div style="background:%s;padding:32px 16px;font-family:%s;">`, mailSurface, mailFont)
 	b.WriteString(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">`)
 	b.WriteString(`<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">`)
@@ -205,7 +210,11 @@ func shell(title, subtitle, body, footer string) string {
 	b.WriteString(body)
 	b.WriteString(`</td></tr>`)
 
-	fmt.Fprintf(&b, `<tr><td style="padding:14px 4px 0;font-size:12px;line-height:1.5;color:%s;">%s</td></tr>`, mailFaint, html.EscapeString(footer))
+	fmt.Fprintf(&b,
+		`<tr><td style="padding:14px 4px 0;font-size:12px;line-height:1.5;color:%s;">%s<br>`+
+			`<a href="%s" style="color:%s;text-decoration:none;">%s</a></td></tr>`,
+		mailFaint, html.EscapeString(footer), html.EscapeString(appURL()), mailFaint,
+		html.EscapeString(strings.TrimPrefix(strings.TrimPrefix(appURL(), "https://"), "http://")))
 	b.WriteString(`</table></td></tr></table></div>`)
 	return b.String()
 }
@@ -249,6 +258,8 @@ func renderNotification(t model.Tailored, attachmentNames []string) string {
 			b.WriteString(`</p>`)
 		}
 	}
+
+	b.WriteString(button("Open it in cvx", appURL()+"/resumes"))
 
 	subtitle := "Tailored for " + t.TargetRole + " and attached as a PDF."
 	return shell("Your resume is ready", subtitle, b.String(),

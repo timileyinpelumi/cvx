@@ -24,7 +24,7 @@ func open(t *testing.T) *Store {
 // rows.
 func testUser(t *testing.T, s *Store, provider, providerID string) int64 {
 	t.Helper()
-	u, err := s.UpsertUser(provider, providerID, providerID+"@example.com", providerID)
+	u, _, err := s.UpsertUser(provider, providerID, providerID+"@example.com", providerID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +399,7 @@ CREATE TABLE IF NOT EXISTS generations (
 func TestUpsertUserInsertsThenFetches(t *testing.T) {
 	s := open(t)
 
-	u, err := s.UpsertUser("google", "g-123", "ada@example.com", "Ada Lovelace")
+	u, _, err := s.UpsertUser("google", "g-123", "ada@example.com", "Ada Lovelace")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +409,7 @@ func TestUpsertUserInsertsThenFetches(t *testing.T) {
 
 	// Same (provider, providerID) fetches the same row rather than inserting
 	// a duplicate, even if email/name are passed differently.
-	again, err := s.UpsertUser("google", "g-123", "changed@example.com", "Changed Name")
+	again, _, err := s.UpsertUser("google", "g-123", "changed@example.com", "Changed Name")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +418,7 @@ func TestUpsertUserInsertsThenFetches(t *testing.T) {
 	}
 
 	// A different provider (even with the same providerID) is a distinct user.
-	other, err := s.UpsertUser("github", "g-123", "bob@example.com", "Bob")
+	other, _, err := s.UpsertUser("github", "g-123", "bob@example.com", "Bob")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +437,7 @@ func TestGetUserAbsentReturnsNilNil(t *testing.T) {
 
 func TestGetUserReturnsInsertedUser(t *testing.T) {
 	s := open(t)
-	created, err := s.UpsertUser("google", "g-1", "a@e.com", "A")
+	created, _, err := s.UpsertUser("google", "g-1", "a@e.com", "A")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -494,14 +494,14 @@ func TestUpsertUserAdoptsLegacyRowsOnFirstUserOnly(t *testing.T) {
 	assertUserID("profile", nil)
 	assertUserID("generations", nil)
 
-	first, err := s.UpsertUser("google", "g-1", "first@example.com", "First")
+	first, _, err := s.UpsertUser("google", "g-1", "first@example.com", "First")
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertUserID("profile", first.ID)
 	assertUserID("generations", first.ID)
 
-	if _, err := s.UpsertUser("github", "gh-1", "second@example.com", "Second"); err != nil {
+	if _, _, err := s.UpsertUser("github", "gh-1", "second@example.com", "Second"); err != nil {
 		t.Fatal(err)
 	}
 	// Legacy rows must still belong to the first user, not be re-adopted or
@@ -544,7 +544,7 @@ CREATE TABLE generations (
 	if err != nil {
 		t.Fatalf("first reopen (migration) failed: %v", err)
 	}
-	if _, err := s1.UpsertUser("google", "g-1", "a@e.com", "A"); err != nil {
+	if _, _, err := s1.UpsertUser("google", "g-1", "a@e.com", "A"); err != nil {
 		t.Fatalf("upsert user after migration failed: %v", err)
 	}
 	if err := s1.Close(); err != nil {
@@ -556,7 +556,7 @@ CREATE TABLE generations (
 		t.Fatalf("second reopen (idempotent migration) failed: %v", err)
 	}
 	defer s2.Close()
-	if _, err := s2.UpsertUser("github", "gh-1", "b@e.com", "B"); err != nil {
+	if _, _, err := s2.UpsertUser("github", "gh-1", "b@e.com", "B"); err != nil {
 		t.Fatalf("upsert user after second reopen failed: %v", err)
 	}
 }
@@ -634,7 +634,7 @@ func TestMigrationPreservesExistingProfileRowThroughCheckRebuild(t *testing.T) {
 
 	// The adopted legacy row must also be reachable through the normal Store
 	// API once a user exists to own it.
-	u, err := s2.UpsertUser("google", "g-1", "a@e.com", "A")
+	u, _, err := s2.UpsertUser("google", "g-1", "a@e.com", "A")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -861,7 +861,7 @@ func TestPinnedGenerationsSortFirst(t *testing.T) {
 
 func TestSoftDeleteUserTombstonesAndFreesIdentity(t *testing.T) {
 	s := open(t)
-	created, err := s.UpsertUser("google", "g-9", "ada@example.com", "Ada")
+	created, _, err := s.UpsertUser("google", "g-9", "ada@example.com", "Ada")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -898,7 +898,7 @@ func TestSoftDeleteUserTombstonesAndFreesIdentity(t *testing.T) {
 		t.Fatalf("want profile kept, got %d rows", profiles)
 	}
 
-	second, err := s.UpsertUser("google", "g-9", "ada@example.com", "Ada")
+	second, _, err := s.UpsertUser("google", "g-9", "ada@example.com", "Ada")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -913,7 +913,7 @@ func TestSoftDeleteUserTombstonesAndFreesIdentity(t *testing.T) {
 func TestSoftDeleteUserTwiceKeepsIdentitiesUnique(t *testing.T) {
 	s := open(t)
 	for i := 0; i < 2; i++ {
-		u, err := s.UpsertUser("google", "g-dup", "dup@example.com", "Dup")
+		u, _, err := s.UpsertUser("google", "g-dup", "dup@example.com", "Dup")
 		if err != nil {
 			t.Fatalf("signup %d: %v", i, err)
 		}
@@ -993,5 +993,27 @@ func TestGetPostingRoundTrips(t *testing.T) {
 	other := testUser(t, s, "google", "posting-other")
 	if p, err := s.GetPosting(other, meta.ID); err != nil || p != nil {
 		t.Fatalf("another user read the posting: %v, %v", p, err)
+	}
+}
+
+// The welcome email hangs off this bool, so it has to be true exactly once.
+func TestUpsertUserReportsCreation(t *testing.T) {
+	s := open(t)
+
+	u, created, err := s.UpsertUser("google", "g-new", "new@example.com", "New")
+	if err != nil || !created {
+		t.Fatalf("first sign-in should create: %v, %v", created, err)
+	}
+	if _, created, err = s.UpsertUser("google", "g-new", "new@example.com", "New"); err != nil || created {
+		t.Fatalf("second sign-in should not create: %v, %v", created, err)
+	}
+
+	// A closed account frees the identity, so signing in again is a new
+	// account and gets greeted like one.
+	if err := s.SoftDeleteUser(u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, created, err = s.UpsertUser("google", "g-new", "new@example.com", "New"); err != nil || !created {
+		t.Fatalf("re-signup after deletion should create: %v, %v", created, err)
 	}
 }

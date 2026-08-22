@@ -990,7 +990,10 @@ func (s *Store) GapSummary(userID int64) ([]GapTrend, int, error) {
 // its data when it upgrades to auth. Later users never trigger this: rows
 // adopted by the first user are no longer NULL, so the WHERE clause matches
 // nothing for anyone after them.
-func (s *Store) UpsertUser(provider, providerID, email, name string) (User, error) {
+// UpsertUser returns the user for this provider identity, creating it if
+// this is the first time it has signed in. The bool reports which happened,
+// so a caller can greet a genuinely new account exactly once.
+func (s *Store) UpsertUser(provider, providerID, email, name string) (User, bool, error) {
 	var existing User
 	err := s.db.QueryRow(
 		`SELECT id, provider, provider_id, email, name FROM users
@@ -998,15 +1001,15 @@ func (s *Store) UpsertUser(provider, providerID, email, name string) (User, erro
 		provider, providerID,
 	).Scan(&existing.ID, &existing.Provider, &existing.ProviderID, &existing.Email, &existing.Name)
 	if err == nil {
-		return existing, nil
+		return existing, false, nil
 	}
 	if err != sql.ErrNoRows {
-		return User{}, err
+		return User{}, false, err
 	}
 
 	var userCount int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE deleted_at IS NULL`).Scan(&userCount); err != nil {
-		return User{}, err
+		return User{}, false, err
 	}
 	isFirstUser := userCount == 0
 
@@ -1016,23 +1019,23 @@ func (s *Store) UpsertUser(provider, providerID, email, name string) (User, erro
 		provider, providerID, email, name, createdAt,
 	)
 	if err != nil {
-		return User{}, err
+		return User{}, false, err
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
-		return User{}, err
+		return User{}, false, err
 	}
 
 	if isFirstUser {
 		if _, err := s.db.Exec(`UPDATE profile SET user_id = ? WHERE user_id IS NULL`, id); err != nil {
-			return User{}, err
+			return User{}, false, err
 		}
 		if _, err := s.db.Exec(`UPDATE generations SET user_id = ? WHERE user_id IS NULL`, id); err != nil {
-			return User{}, err
+			return User{}, false, err
 		}
 	}
 
-	return User{ID: id, Provider: provider, ProviderID: providerID, Email: email, Name: name}, nil
+	return User{ID: id, Provider: provider, ProviderID: providerID, Email: email, Name: name}, true, nil
 }
 
 // GetUser returns the user with the given id, or (nil, nil) if no such user

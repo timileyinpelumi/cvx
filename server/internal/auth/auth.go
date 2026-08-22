@@ -36,6 +36,10 @@ type Auth struct {
 	AllowedEmails map[string]bool
 	// SecureCookies marks every cookie Secure (production behind HTTPS).
 	SecureCookies bool
+	// OnSignup is called once, in the background, the first time an identity
+	// signs in. Optional: a nil hook, or a failing one, never blocks a
+	// sign-in.
+	OnSignup func(email, name string)
 }
 
 func errJSON(c echo.Context, status int, msg string) error {
@@ -55,7 +59,7 @@ func UserIDFromContext(c echo.Context) (int64, bool) {
 func (a *Auth) Middleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		if a.DevUserEmail != "" {
-			u, err := a.Store.UpsertUser("dev", a.DevUserEmail, a.DevUserEmail, a.DevUserEmail)
+			u, _, err := a.Store.UpsertUser("dev", a.DevUserEmail, a.DevUserEmail, a.DevUserEmail)
 			if err != nil {
 				slog.Error("dev user upsert failed", "err", err)
 				return errJSON(c, http.StatusInternalServerError, "internal error")
