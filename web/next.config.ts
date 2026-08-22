@@ -7,8 +7,14 @@ const nextConfig: NextConfig = {
   // app ships as one small container next to the Go binary.
   output: "standalone",
   async redirects() {
-    // The list lived at /history before the rename.
-    return [{ source: "/history/:path*", destination: "/resumes/:path*", permanent: false }];
+    return [
+      // The list lived at /history before the rename.
+      { source: "/history/:path*", destination: "/resumes/:path*", permanent: false },
+      // The profile form is a section of the account page now. A server
+      // redirect rather than a page that redirects itself: a prerendered
+      // page would 200 and then hop, which flashes.
+      { source: "/profile", destination: "/account", permanent: false },
+    ];
   },
   async rewrites() {
     return [
