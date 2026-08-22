@@ -16,8 +16,8 @@ func TestSecurityHeadersAndBodyLimit(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
 	req.Header.Set(echo.HeaderXRealIP, "203.0.113.1")
-	// Fly terminates TLS and forwards this; HSTS is only meaningful, and is
-	// only set, on a request that arrived over HTTPS.
+	// The proxy in front terminates TLS and forwards this; HSTS is only
+	// meaningful, and is only set, on a request that arrived over HTTPS.
 	req.Header.Set(echo.HeaderXForwardedProto, "https")
 	e.ServeHTTP(rec, req)
 

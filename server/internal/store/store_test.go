@@ -1017,3 +1017,32 @@ func TestUpsertUserReportsCreation(t *testing.T) {
 		t.Fatalf("re-signup after deletion should create: %v, %v", created, err)
 	}
 }
+
+// The backup runs against a live database, which is the only kind a
+// deployment has.
+func TestBackupWritesAReadableCopy(t *testing.T) {
+	s := open(t)
+	userID := testUser(t, s, "google", "backup-user")
+	if err := s.SaveProfile(userID, model.Profile{Name: "Ada", Summary: "kept"}); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "backup.db")
+	if err := s.Backup(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Backup(""); err == nil {
+		t.Fatal("want an error for an empty path")
+	}
+
+	restored, err := Open(path)
+	if err != nil {
+		t.Fatalf("the backup is not a usable database: %v", err)
+	}
+	defer restored.Close()
+
+	p, err := restored.LoadProfile(userID)
+	if err != nil || p == nil || p.Name != "Ada" {
+		t.Fatalf("backup lost the data: %+v, %v", p, err)
+	}
+}

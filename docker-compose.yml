@@ -1,0 +1,51 @@
+# cvx as a single unit: one app container plus a reverse proxy that gets a
+# certificate on its own. Runs the same way on a laptop and on one small
+# AWS instance.
+#
+# The database is SQLite on a real disk. That is the whole reason this is one
+# long-running container on one host rather than something serverless: the
+# file has to live somewhere that survives a restart, and only one process may
+# write it. Do not scale this to two replicas.
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Everything the app links to (OAuth callbacks, email buttons) is built
+      # from this, so it has to be the public URL, not the container's.
+      CVX_ENV: production
+    volumes:
+      - cvx-data:/app/data
+    expose:
+      - "3000"
+    healthcheck:
+      # Passes only when both halves answer: the web tier proxies this to the
+      # API beside it.
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      # The domain Caddy gets a certificate for. Set CVX_DOMAIN in .env.
+      CVX_DOMAIN: ${CVX_DOMAIN:?set CVX_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  cvx-data:
+  caddy-data:
+  caddy-config:

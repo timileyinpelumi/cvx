@@ -45,8 +45,9 @@ const maxConcurrentPerUser = 2
 // ceiling, and the two rate limiters. Applied by main before Register, so
 // every route including auth is covered.
 func Security(e *echo.Echo, production bool) {
-	// Fly terminates TLS and forwards the client IP; without this every
-	// request rate-limits against the proxy as a single client.
+	// TLS terminates at the reverse proxy in front of this container, which
+	// forwards the real client IP. Without this, every request rate-limits
+	// against the proxy as a single client.
 	e.IPExtractor = echo.ExtractIPFromXFFHeader()
 
 	secure := middleware.SecureConfig{

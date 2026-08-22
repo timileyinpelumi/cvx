@@ -1,0 +1,16 @@
+# Automatic HTTPS for the single cvx container. Caddy handles the
+# certificate, redirects http to https, and forwards the real client IP so
+# the app's rate limiter sees clients rather than the proxy.
+{$CVX_DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy app:3000 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

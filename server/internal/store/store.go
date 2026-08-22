@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
@@ -269,6 +270,22 @@ func migrateProfileDropSingleRowCheck(db *sql.DB) error {
 		ALTER TABLE profile_new RENAME TO profile;
 	`)
 	return err
+}
+
+// Backup writes a consistent copy of the database to path while the app is
+// running. VACUUM INTO takes its own read transaction, so the copy is a
+// point-in-time snapshot rather than a torn file, which is what makes
+// copying cvx.db by hand a bad idea.
+func (s *Store) Backup(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("store: backup path is required")
+	}
+	// VACUUM INTO takes a literal, not a bound parameter.
+	quoted := "'" + strings.ReplaceAll(path, "'", "''") + "'"
+	if _, err := s.db.Exec("VACUUM INTO " + quoted); err != nil {
+		return fmt.Errorf("store: backup to %s: %w", path, err)
+	}
+	return nil
 }
 
 func (s *Store) Close() error {

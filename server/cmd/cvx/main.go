@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"log/slog"
 	"net/http"
 	"os"
@@ -65,7 +66,13 @@ func splitCommaEnv(v string) []string {
 	return out
 }
 
+// backupPath turns the binary into a one-shot backup tool. Declared at
+// package level so main stays a straight line.
+var backupPath = flag.String("backup", "", "write a consistent copy of the database to this path and exit")
+
 func main() {
+	flag.Parse()
+
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	loadDotEnv(".env")
@@ -88,6 +95,17 @@ func main() {
 		os.Exit(1)
 	}
 	defer st.Close()
+
+	// A one-shot mode, so a running deployment can be backed up without
+	// stopping it: cvx -backup data/backup.db
+	if *backupPath != "" {
+		if err := st.Backup(*backupPath); err != nil {
+			slog.Error("backup", "err", err)
+			os.Exit(1)
+		}
+		slog.Info("backup written", "path", *backupPath)
+		return
+	}
 
 	llm, llmDesc, err := ai.NewFromEnv()
 	if err != nil {

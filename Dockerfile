@@ -1,9 +1,9 @@
 # One container: the Go API and the Next.js server, behind a single port.
 #
-# They were two deployments (Vercel + Fly) with the web tier proxying to the
-# API. Same-origin was the reason, and it still is — but a loopback proxy
-# inside one image gives the same cookies and OAuth behaviour with one thing
-# to deploy, one place for secrets, and no cross-region hop per request.
+# They were two deployments with the web tier proxying to the API.
+# Same-origin was the reason, and it still is — but a loopback proxy inside
+# one image gives the same cookies and OAuth behaviour with one thing to
+# deploy, one place for secrets, and no cross-host hop per request.
 
 # --- the API -----------------------------------------------------------
 FROM golang:1.25-alpine AS api
