@@ -27,33 +27,33 @@ export default function AccountPage() {
 
   return (
     <>
-      <PageHeader title="Account" meta={current.meta} />
+      <PageHeader
+        title="Account"
+        meta={current.meta}
+        below={
+          <div role="tablist" aria-label="Account sections" className="flex gap-1.5 overflow-x-auto">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => setTab(t.id)}
+                className={cx(
+                  "h-8 shrink-0 rounded-full border px-3.5 text-[12.5px] font-medium",
+                  "transition-colors duration-[130ms]",
+                  tab === t.id
+                    ? "border-ink bg-ink-soft text-ink"
+                    : "border-line text-fg-muted hover:border-line-strong hover:text-fg",
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        }
+      />
       <div className="mx-auto max-w-[46rem] px-5 py-6 sm:px-7">
-        <div
-          role="tablist"
-          aria-label="Account sections"
-          className="mb-5 flex gap-1.5 overflow-x-auto"
-        >
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.id}
-              onClick={() => setTab(t.id)}
-              className={cx(
-                "h-8 shrink-0 rounded-full border px-3.5 text-[12.5px] font-medium",
-                "transition-colors duration-[130ms]",
-                tab === t.id
-                  ? "border-ink bg-ink-soft text-ink"
-                  : "border-line text-fg-muted hover:border-line-strong hover:text-fg",
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
         <div className="space-y-8">
           {tab === "you" && (
             <>

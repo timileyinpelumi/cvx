@@ -81,20 +81,29 @@ export function PageHeader({
   title,
   meta,
   actions,
+  below,
 }: {
   title: string;
   meta?: React.ReactNode;
   actions?: React.ReactNode;
+  /** A second row inside the same sticky block, for tabs and the like.
+   *  Sticking it separately would mean offsetting it by the header's
+   *  height, which changes with the title and the viewport; keeping it in
+   *  here means there is no number to get wrong. */
+  below?: React.ReactNode;
 }) {
   return (
-    <header className="sticky top-0 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-surface px-5 py-3.5 sm:px-7">
-      <div className="min-w-0 flex-1">
-        <h1 className="font-display text-[19px] font-bold tracking-[-0.02em] leading-tight">
-          {title}
-        </h1>
-        {meta && <div className="mt-0.5 text-[12.5px] text-fg-muted">{meta}</div>}
+    <header className="sticky top-0 z-20 border-b border-line bg-surface px-5 py-3.5 sm:px-7">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="min-w-0 flex-1">
+          <h1 className="font-display text-[19px] font-bold tracking-[-0.02em] leading-tight">
+            {title}
+          </h1>
+          {meta && <div className="mt-0.5 text-[12.5px] text-fg-muted">{meta}</div>}
+        </div>
+        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {below && <div className="mt-3">{below}</div>}
     </header>
   );
 }
