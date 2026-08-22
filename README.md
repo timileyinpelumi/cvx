@@ -1,3 +1,5 @@
+<img src="web/public/icon-192.png" alt="" width="76">
+
 # cvx
 
 Paste a job ad, get a one page resume aimed at it.
