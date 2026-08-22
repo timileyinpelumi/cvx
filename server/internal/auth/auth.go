@@ -40,6 +40,12 @@ type Auth struct {
 	// signs in. Optional: a nil hook, or a failing one, never blocks a
 	// sign-in.
 	OnSignup func(email, name string)
+	// OnSignin is called on every successful sign-in, including the first.
+	// Used for telemetry; must not block.
+	OnSignin func(userID int64, provider string, created bool)
+	// IsAdmin reports whether an email may open the admin panel, so the UI
+	// can hide a link that would only 403. Nil means nobody is an admin.
+	IsAdmin func(email string) bool
 }
 
 func errJSON(c echo.Context, status int, msg string) error {
@@ -95,11 +101,13 @@ func (a *Auth) GetMe(c echo.Context) error {
 	if u == nil {
 		return errJSON(c, http.StatusUnauthorized, "unauthorized")
 	}
+	admin := a.IsAdmin != nil && a.IsAdmin(u.Email)
 	return c.JSON(http.StatusOK, map[string]any{
 		"id":       u.ID,
 		"email":    u.Email,
 		"name":     u.Name,
 		"provider": u.Provider,
+		"admin":    admin,
 	})
 }
 

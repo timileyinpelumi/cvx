@@ -195,6 +195,9 @@ func (a *Auth) AuthCallback(c echo.Context) error {
 		slog.Error("upsert user failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, "internal error")
 	}
+	if a.OnSignin != nil {
+		a.OnSignin(u.ID, p.Name, created)
+	}
 	if created && a.OnSignup != nil {
 		// Off the request path: a slow mail provider must not sit between
 		// someone and the app they just signed in to.

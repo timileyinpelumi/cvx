@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -35,6 +36,7 @@ const (
 // key, model, whether the endpoint accepts a PDF file part natively, and
 // which JSON field name carries the output-token budget.
 type openAICompat struct {
+	provider       string
 	baseURL        string
 	apiKey         string
 	model          string
@@ -45,6 +47,7 @@ type openAICompat struct {
 
 func newOpenAICompat(baseURL, apiKey, model string, pdfNative bool, maxTokensField string) *openAICompat {
 	return &openAICompat{
+		provider:       providerOf(baseURL),
 		baseURL:        baseURL,
 		apiKey:         apiKey,
 		model:          model,
@@ -79,6 +82,21 @@ type jsonSchema struct {
 	Schema map[string]any `json:"schema"`
 }
 
+// providerOf names the vendor from its endpoint, so usage reporting does
+// not need threading through every constructor call.
+func providerOf(baseURL string) string {
+	switch {
+	case strings.Contains(baseURL, "groq.com"):
+		return "groq"
+	case strings.Contains(baseURL, "openai.com"):
+		return "openai"
+	case strings.Contains(baseURL, "anthropic.com"):
+		return "anthropic"
+	default:
+		return "other"
+	}
+}
+
 type chatResponse struct {
 	Choices []struct {
 		Message struct {
@@ -88,9 +106,22 @@ type chatResponse struct {
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage"`
 }
 
-func (c *openAICompat) GenerateJSON(ctx context.Context, system string, blocks []ContentBlock, schema map[string]any) ([]byte, error) {
+func (c *openAICompat) GenerateJSON(ctx context.Context, system string, blocks []ContentBlock, schema map[string]any) (out []byte, err error) {
+	// Every call reports what it cost, success or failure: a run that fails
+	// after the model has already produced tokens still spent them.
+	started := time.Now()
+	usage := Usage{Provider: c.provider, Model: c.model}
+	defer func() {
+		reportUsage(ctx, usage, time.Since(started).Milliseconds(), err)
+	}()
+
 	var parts []map[string]any
 	for _, b := range blocks {
 		if b.PDF != nil {
@@ -178,6 +209,13 @@ func (c *openAICompat) GenerateJSON(ctx context.Context, system string, blocks [
 	var cr chatResponse
 	if err := json.Unmarshal(respBytes, &cr); err != nil {
 		return nil, fmt.Errorf("openaicompat: unmarshal response: %w", err)
+	}
+
+	usage.PromptTokens = cr.Usage.PromptTokens
+	usage.OutputTokens = cr.Usage.CompletionTokens
+	usage.TotalTokens = cr.Usage.TotalTokens
+	if usage.TotalTokens == 0 {
+		usage.TotalTokens = usage.PromptTokens + usage.OutputTokens
 	}
 
 	if len(cr.Choices) == 0 || cr.Choices[0].Message.Content == "" {

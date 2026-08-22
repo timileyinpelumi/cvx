@@ -46,6 +46,7 @@ CVX_DOMAIN=cvx.example.com
 CVX_BASE_URL=https://cvx.example.com
 CVX_SESSION_SECRET=<openssl rand -hex 32>
 CVX_ALLOWED_EMAILS=you@example.com
+CVX_ADMIN_EMAILS=you@example.com
 
 GROQ_API_KEY=...
 GOOGLE_CLIENT_ID=...
@@ -56,7 +57,8 @@ RESEND_API_KEY=...
 CVX_EMAIL_FROM=cvx <hello@cvx.example.com>
 ```
 
-`CVX_ALLOWED_EMAILS` is not optional in practice: without it, anyone with a
+`CVX_ADMIN_EMAILS` is who may open `/admin`; empty means the panel is closed
+to everyone, including you. `CVX_ALLOWED_EMAILS` is not optional in practice: without it, anyone with a
 Google or GitHub account can sign in. `CVX_ENV=production` is set by the
 compose file; it hard-refuses `CVX_DEV_USER` and marks cookies Secure.
 

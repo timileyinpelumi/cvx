@@ -209,10 +209,11 @@ func devUserID(t *testing.T, st *store.Store) int64 {
 func newTestServerAs(t *testing.T, st *store.Store, email string) (*Server, *echo.Echo) {
 	t.Helper()
 	s := &Server{
-		Store: st,
-		LLM:   fakeLLM{},
-		Mail:  func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
-		Auth:  &auth.Auth{Store: st, DevUserEmail: email},
+		Store:  st,
+		LLM:    fakeLLM{},
+		Mail:   func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Auth:   &auth.Auth{Store: st, DevUserEmail: email},
+		Events: &Recorder{Store: st},
 	}
 	e := echo.New()
 	s.Register(e)
@@ -223,10 +224,11 @@ func newTestServerWithLLM(t *testing.T, llm ai.LLM) (*Server, *echo.Echo) {
 	t.Helper()
 	st := newStore(t)
 	s := &Server{
-		Store: st,
-		LLM:   llm,
-		Mail:  func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
-		Auth:  devAuth(st),
+		Store:  st,
+		LLM:    llm,
+		Mail:   func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Auth:   devAuth(st),
+		Events: &Recorder{Store: st},
 	}
 	e := echo.New()
 	s.Register(e)
@@ -582,10 +584,11 @@ func TestGenerateWithURLRoleInputFetchFailureReturns502(t *testing.T) {
 func TestGenerationsListNilSlicesSerializeAsEmptyArrays(t *testing.T) {
 	st := newStore(t)
 	s := &Server{
-		Store: st,
-		LLM:   fakeLLM{},
-		Mail:  func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
-		Auth:  devAuth(st),
+		Store:  st,
+		LLM:    fakeLLM{},
+		Mail:   func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Auth:   devAuth(st),
+		Events: &Recorder{Store: st},
 	}
 	e := echo.New()
 	s.Register(e)
@@ -612,10 +615,11 @@ func TestGenerationsListNilSlicesSerializeAsEmptyArrays(t *testing.T) {
 func TestGapsEndpointShape(t *testing.T) {
 	st := newStore(t)
 	s := &Server{
-		Store: st,
-		LLM:   fakeLLM{},
-		Mail:  func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
-		Auth:  devAuth(st),
+		Store:  st,
+		LLM:    fakeLLM{},
+		Mail:   func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Auth:   devAuth(st),
+		Events: &Recorder{Store: st},
 	}
 	e := echo.New()
 	s.Register(e)
@@ -1022,10 +1026,11 @@ func TestDataIsolatedPerUser(t *testing.T) {
 func TestHandlersGuardMissingUserIDContext(t *testing.T) {
 	st := newStore(t)
 	s := &Server{
-		Store: st,
-		LLM:   fakeLLM{},
-		Mail:  func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
-		Auth:  devAuth(st),
+		Store:  st,
+		LLM:    fakeLLM{},
+		Mail:   func(string, model.Tailored, []byte, string, []byte, string) (bool, error) { return false, nil },
+		Auth:   devAuth(st),
+		Events: &Recorder{Store: st},
 	}
 	e := echo.New()
 

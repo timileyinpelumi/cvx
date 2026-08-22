@@ -1,4 +1,7 @@
 import type {
+  AdminEvent,
+  AdminOverview,
+  AdminUser,
   AvailableContent,
   GapsSummary,
   GenerateRequest,
@@ -61,6 +64,20 @@ export const api = {
     request<{ providers: string[] }>("/auth/providers").then((r) => r.providers),
 
   profile: () => request<ProfileSummary>("/api/profile"),
+
+  adminOverview: (days: number) =>
+    request<AdminOverview>(`/api/admin/overview?days=${days}`),
+
+  adminEvents: (params: { kind?: string; failed?: boolean; days?: number; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params.kind) q.set("kind", params.kind);
+    if (params.failed) q.set("failed", "1");
+    if (params.days) q.set("days", String(params.days));
+    if (params.limit) q.set("limit", String(params.limit));
+    return request<{ events: AdminEvent[] }>(`/api/admin/events?${q}`).then((r) => r.events);
+  },
+
+  adminUsers: () => request<{ users: AdminUser[] }>("/api/admin/users").then((r) => r.users),
 
   profileEdits: () => request<ProfileEdits>("/api/profile/edits"),
 

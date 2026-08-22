@@ -148,9 +148,15 @@ func main() {
 		slog.Info("auth", "mode", "oauth", "providers", providers)
 	}
 
+	events := &httpapi.Recorder{Store: st}
+	ai.SetUsageSink(events.UsageSink())
+	st.PruneEvents()
+
 	srv := &httpapi.Server{
-		Store: st,
-		LLM:   llm,
+		Store:          st,
+		LLM:            llm,
+		LLMDescription: llmDesc,
+		Events:         events,
 		Mail: func(to string, t model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error) {
 			if coverPDF != nil {
 				return mail.Send(to, t, pdf, filename, "", mail.Attachment{Filename: coverFilename, Content: coverPDF})
@@ -177,39 +183,24 @@ func main() {
 			}
 		},
 	}
+	authGate.IsAdmin = httpapi.IsAdmin
+	authGate.OnSignin = func(userID int64, provider string, created bool) {
+		kind := httpapi.SigninEvent
+		if created {
+			kind = httpapi.SignupEvent
+		}
+		events.Record(nil, store.Event{UserID: userID, Kind: kind, Target: provider, OK: true})
+	}
 	authGate.OnSignup = func(email, name string) {
 		srv.LifecycleMail(httpapi.MailWelcome, email, name)
 	}
 
 	e := echo.New()
-	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
-		LogMethod:   true,
-		LogURI:      true,
-		LogStatus:   true,
-		LogLatency:  true,
-		LogError:    true,
-		HandleError: true,
-		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
-			attrs := []any{
-				"method", v.Method,
-				"uri", v.URI,
-				"status", v.Status,
-				"latency_ms", v.Latency.Milliseconds(),
-			}
-			if v.Error != nil {
-				attrs = append(attrs, "err", v.Error)
-			}
-			switch {
-			case v.Status >= 500:
-				slog.Error("request", attrs...)
-			case v.Status >= 400:
-				slog.Warn("request", attrs...)
-			default:
-				slog.Info("request", attrs...)
-			}
-			return nil
-		},
-	}))
+	// One middleware for both halves of observability: a request id and a
+	// structured log line for every request, and a persisted event for the
+	// ones worth keeping. Container logs die with the container; the event
+	// store is on the volume.
+	e.Use(events.Telemetry())
 	e.Use(middleware.Recover())
 	httpapi.Security(e, production)
 	e.GET("/healthz", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })

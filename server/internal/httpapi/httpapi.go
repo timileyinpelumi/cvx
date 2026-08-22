@@ -48,6 +48,12 @@ type Server struct {
 	Store *store.Store
 	LLM   ai.LLM
 	Mail  func(to string, t model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error)
+	// LLMDescription is the provider/model string, shown on the admin panel
+	// so "which model is this actually running" is never a guess.
+	LLMDescription string
+	// Events records what happens, for the admin panel. Optional: a nil
+	// recorder means nothing is written and nothing breaks.
+	Events *Recorder
 	// LifecycleMail sends an account email (welcome, farewell). Optional:
 	// nil means the deployment has no mail provider configured.
 	LifecycleMail func(kind, to, name string)
@@ -77,6 +83,7 @@ func (s *Server) Register(e *echo.Echo) {
 
 	api := e.Group("/api")
 	api.Use(s.Auth.Middleware)
+	s.registerAdmin(api)
 	api.GET("/me", s.Auth.GetMe)
 	api.DELETE("/account", s.deleteAccount)
 	api.GET("/profile", s.getProfile)
@@ -150,6 +157,7 @@ func (s *Server) deleteAccount(c echo.Context) error {
 		slog.Error("delete account failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
+	s.Events.Record(c, store.Event{UserID: userID, Kind: store.EventAccountClose, OK: true})
 	if s.LifecycleMail != nil && email != "" {
 		go s.LifecycleMail(MailFarewell, email, name)
 	}
@@ -225,6 +233,7 @@ func (s *Server) putProfile(c echo.Context) error {
 }
 
 func (s *Server) postProfile(c echo.Context) error {
+	started := time.Now()
 	userID, ok := auth.UserIDFromContext(c)
 	if !ok {
 		return errJSON(c, http.StatusUnauthorized, "unauthorized")
@@ -257,13 +266,18 @@ func (s *Server) postProfile(c echo.Context) error {
 			slog.Info("profile upload rejected", "err", err)
 			return errJSON(c, http.StatusUnprocessableEntity, msgNotResume)
 		}
+		s.Events.Done(c, store.EventProfileUpload, "", started, err, nil)
 		slog.Error("digitize failed", "err", err)
 		return errJSON(c, http.StatusBadGateway, err.Error())
 	}
 	if err := s.Store.SaveProfile(userID, p); err != nil {
+		s.Events.Done(c, store.EventProfileUpload, "", started, err, nil)
 		slog.Error("save profile failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
+	s.Events.Done(c, store.EventProfileUpload, "", started, nil, map[string]any{
+		"items": len(p.Items), "skills": len(p.Skills),
+	})
 	return c.JSON(http.StatusOK, summarize(p))
 }
 
@@ -521,8 +535,11 @@ func (s *Server) postGenerate(c echo.Context) error {
 		return errJSON(c, http.StatusConflict, "no profile")
 	}
 
+	started := time.Now()
+
 	posting, err := ai.ParsePosting(ctx, s.LLM, req.RoleInput)
 	if err != nil {
+		s.Events.Done(c, store.EventGenerate, "", started, err, nil)
 		if errors.Is(err, ai.ErrNotJobInput) {
 			slog.Info("job input rejected", "err", err)
 			return errJSON(c, http.StatusUnprocessableEntity, msgNotJobInput)
@@ -533,6 +550,7 @@ func (s *Server) postGenerate(c echo.Context) error {
 
 	tailored, err := ai.TailorWithOptions(ctx, s.LLM, *p, posting, s.loadGenerationParams(userID).options())
 	if err != nil {
+		s.Events.Done(c, store.EventGenerate, posting.RoleLabel(), started, err, nil)
 		slog.Error("tailor failed", "err", err)
 		return errJSON(c, http.StatusBadGateway, err.Error())
 	}
@@ -655,6 +673,15 @@ func (s *Server) postGenerate(c echo.Context) error {
 
 	coverage := model.CoverageOf(posting, tailored)
 	fit := model.FitOf(posting, tailored, coverage)
+
+	s.Events.Done(c, store.EventGenerate, posting.RoleLabel(), started, nil, map[string]any{
+		"cover":    coverFilename != "",
+		"email":    recruiterSent,
+		"fit":      fit.Score,
+		"fill":     layout.Fill,
+		"trimmed":  len(layout.Trimmed),
+		"warnings": len(proseWarnings),
+	})
 
 	return c.JSON(http.StatusOK, generateResponse{
 		ID:             meta.ID,
@@ -801,7 +828,9 @@ func (s *Server) generateFollowUp(c echo.Context) error {
 		posting = *stored
 	}
 
+	started := time.Now()
 	re, err := ai.FollowUp(c.Request().Context(), s.LLM, *p, posting, days)
+	s.Events.Done(c, store.EventFollowUp, posting.RoleLabel(), started, err, map[string]any{"days": days})
 	if err != nil {
 		slog.Error("follow up failed", "err", err)
 		return errJSON(c, http.StatusBadGateway, err.Error())
@@ -856,7 +885,9 @@ func (s *Server) previewGeneration(c echo.Context) error {
 	}
 	model.NormalizeTailored(&t)
 
+	started := time.Now()
 	pdf, layout, err := pdfgen.RenderWithLayout(*p, t, s.loadStyle(userID))
+	s.Events.Done(c, store.EventPreview, c.Param("id"), started, err, map[string]any{"fill": layout.Fill})
 	if err != nil {
 		slog.Error("preview render failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
@@ -1023,7 +1054,9 @@ func (s *Server) rewriteBullet(c echo.Context) error {
 		posting = *stored
 	}
 
+	started := time.Now()
 	text, err := ai.RewriteBullet(c.Request().Context(), s.LLM, source, itemTitle, organization, posting, req.Current, req.Instruction)
+	s.Events.Done(c, store.EventBulletRewrite, req.BulletID, started, err, nil)
 	if err != nil {
 		slog.Error("rewrite bullet failed", "err", err)
 		return errJSON(c, http.StatusBadGateway, err.Error())
@@ -1116,6 +1149,11 @@ func (s *Server) putGenerationStatus(c echo.Context) error {
 		return errJSON(c, http.StatusBadRequest, fmt.Sprintf("unknown status %q", req.Status))
 	}
 	found, err := s.Store.SetGenerationStatus(userID, c.Param("id"), req.Status)
+	if err == nil && found && req.Status == store.StatusSent {
+		// The last step of the funnel: a resume that was actually sent
+		// somewhere is the only outcome the tool exists for.
+		s.Events.Record(c, store.Event{Kind: store.EventStatusChange, Target: req.Status, OK: true})
+	}
 	if err != nil {
 		slog.Error("set generation status failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
@@ -1386,6 +1424,9 @@ func (s *Server) deleteGeneration(c echo.Context) error {
 }
 
 func (s *Server) getGenerationPDF(c echo.Context) error {
+	// Recorded before the bytes go out: a download that starts is the signal,
+	// and the funnel counts intent, not completed transfers.
+	s.Events.Record(c, store.Event{Kind: store.EventDownload, Target: c.Param("id"), OK: true})
 	userID, ok := auth.UserIDFromContext(c)
 	if !ok {
 		return errJSON(c, http.StatusUnauthorized, "unauthorized")

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { NAV } from "@/lib/nav";
+import { ADMIN_NAV, NAV } from "@/lib/nav";
 import { cx } from "@/lib/format";
 import { useSession } from "./Session";
 import { Wordmark } from "./Wordmark";
@@ -68,11 +68,13 @@ function Sidebar({ onOpenPalette }: { onOpenPalette: () => void }) {
 
       <nav className="flex-1 px-3">
         <ul className="space-y-0.5">
-          {NAV.filter((n) => n.href !== "/account").map((item) => (
-            <li key={item.href}>
-              <NavLink href={item.href} label={item.label} icon={item.icon} active={isActive(item.href)} />
-            </li>
-          ))}
+          {useNav()
+            .filter((n) => n.href !== "/account")
+            .map((item) => (
+              <li key={item.href}>
+                <NavLink href={item.href} label={item.label} icon={item.icon} active={isActive(item.href)} />
+              </li>
+            ))}
         </ul>
       </nav>
 
@@ -125,13 +127,24 @@ function NavLink({
   );
 }
 
+/** The destinations this account can actually reach: the admin panel is
+ *  appended only for accounts on the server's allowlist, so nobody is shown
+ *  a link that would 403. */
+function useNav() {
+  const { me } = useSession();
+  return me?.admin ? [...NAV, ADMIN_NAV] : [...NAV];
+}
+
 function MobileTabs() {
   const isActive = useIsActive();
+  const nav = useNav();
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-raised pb-[env(safe-area-inset-bottom)] md:hidden">
-      <ul className="grid grid-cols-5">
-        {NAV.map((item) => {
+      {/* One column per destination: hardcoding five wrapped the bar onto a
+          second row the moment a sixth was added. */}
+      <ul className="grid" style={{ gridTemplateColumns: `repeat(${nav.length}, minmax(0, 1fr))` }}>
+        {nav.map((item) => {
           const active = isActive(item.href);
           const Icon = item.icon;
           return (
@@ -140,12 +153,13 @@ function MobileTabs() {
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={cx(
-                  "flex h-14 flex-col items-center justify-center gap-1 text-[10.5px] font-medium",
+                  "flex h-14 flex-col items-center justify-center gap-1 px-0.5 text-[10px] font-medium",
+                  "min-w-0 [&>span]:w-full [&>span]:truncate [&>span]:text-center",
                   active ? "text-ink" : "text-fg-faint",
                 )}
               >
-                <Icon size={17} />
-                {item.label}
+                <Icon size={17} className="shrink-0" />
+                <span>{item.label}</span>
               </Link>
             </li>
           );

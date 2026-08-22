@@ -59,6 +59,74 @@ export interface PreviewResult {
   pageAdvice?: string[];
 }
 
+/* ---------------------------------- admin --------------------------------- */
+
+export interface AdminCount {
+  label: string;
+  total: number;
+  failed: number;
+  ms?: number;
+  tokens?: number;
+  cost?: number;
+}
+
+export interface AdminEvent {
+  id: number;
+  at: string;
+  userId?: number;
+  kind: string;
+  target?: string;
+  ms?: number;
+  ok: boolean;
+  detail?: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface AdminOverview {
+  totals: {
+    users: number;
+    activeUsers: number;
+    profiles: number;
+    generations: number;
+    events: number;
+    dbBytes: number;
+  };
+  funnel: {
+    signups: number;
+    uploads: number;
+    generations: number;
+    downloads: number;
+    sent: number;
+  };
+  activity: AdminCount[];
+  daily: AdminCount[];
+  usage: AdminCount[];
+  failures: AdminCount[];
+  health: {
+    uptimeSeconds: number;
+    goroutines: number;
+    heapBytes: number;
+    llm: string;
+    mailEnabled: boolean;
+    oauthEnabled: boolean;
+    production: boolean;
+  };
+  windowDays: number;
+}
+
+export interface AdminUser {
+  id: number;
+  email: string;
+  name: string;
+  provider: string;
+  createdAt: string;
+  lastSeen?: string;
+  deleted: boolean;
+  generations: number;
+  tokens: number;
+  cost: number;
+}
+
 export interface RecruiterEmail {
   subject: string;
   greeting: string;
@@ -193,6 +261,9 @@ export interface Me {
   email: string;
   name: string;
   provider: string;
+  /** On the server's allowlist. The panel 403s regardless; this only
+   *  decides whether the link is worth showing. */
+  admin?: boolean;
 }
 
 export interface GenerateRequest {
