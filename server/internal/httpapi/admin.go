@@ -67,14 +67,26 @@ func (s *Server) registerAdmin(api *echo.Group) {
 }
 
 type adminOverview struct {
-	Totals   store.Totals  `json:"totals"`
-	Funnel   store.Funnel  `json:"funnel"`
-	Activity []store.Count `json:"activity"`
-	Daily    []store.Count `json:"daily"`
-	Usage    []store.Count `json:"usage"`
-	Failures []store.Count `json:"failures"`
-	Health   adminHealth   `json:"health"`
-	Window   int           `json:"windowDays"`
+	Totals    store.Totals    `json:"totals"`
+	Funnel    store.Funnel    `json:"funnel"`
+	Activity  []store.Count   `json:"activity"`
+	Daily     []store.Count   `json:"daily"`
+	Usage     []store.Count   `json:"usage"`
+	Failures  []store.Count   `json:"failures"`
+	Health    adminHealth     `json:"health"`
+	Window    int             `json:"windowDays"`
+	Latency   []store.Latency `json:"latency"`
+	Quality   store.Quality   `json:"quality"`
+	Slowest   []store.Event   `json:"slowest"`
+	Providers []store.Count   `json:"providers"`
+	ErrorRate []store.Count   `json:"errorRate"`
+}
+
+// latencyKinds are the durations worth a percentile: the pipeline stages a
+// person waits on, plus the request as a whole.
+var latencyKinds = []string{
+	store.EventGenerate, store.EventLLM, store.EventPreview,
+	store.EventBulletRewrite, store.EventProfileUpload, store.EventRequest,
 }
 
 // adminHealth is what is true right now, as opposed to what has happened.
@@ -117,12 +129,35 @@ func (s *Server) adminOverview(c echo.Context) error {
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
 
+	latency, err := s.Store.LatencyByKind(since, latencyKinds)
+	if err != nil {
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	quality, err := s.Store.QualitySince(since)
+	if err != nil {
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	slowest, err := s.Store.SlowRequests(since, 8)
+	if err != nil {
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	providers, err := s.Store.LLMByProvider(since)
+	if err != nil {
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	errorRate, err := s.Store.ErrorRateByDay(days)
+	if err != nil {
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 
 	return c.JSON(http.StatusOK, adminOverview{
 		Totals: totals, Funnel: funnel, Activity: activity,
 		Daily: daily, Usage: usage, Failures: failures, Window: days,
+		Latency: latency, Quality: quality, Slowest: slowest,
+		Providers: providers, ErrorRate: errorRate,
 		Health: adminHealth{
 			UptimeSeconds: int64(time.Since(startedAt).Seconds()),
 			Goroutines:    runtime.NumGoroutine(),

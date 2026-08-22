@@ -82,6 +82,23 @@ export interface AdminEvent {
   meta?: Record<string, unknown>;
 }
 
+export interface AdminLatency {
+  label: string;
+  count: number;
+  p50: number;
+  p95: number;
+  max: number;
+}
+
+export interface AdminQuality {
+  generations: number;
+  avgFit: number;
+  avgFill: number;
+  trimmedShare: number;
+  warnedShare: number;
+  shortPageRate: number;
+}
+
 export interface AdminOverview {
   totals: {
     users: number;
@@ -112,6 +129,11 @@ export interface AdminOverview {
     production: boolean;
   };
   windowDays: number;
+  latency: AdminLatency[];
+  quality: AdminQuality;
+  slowest: AdminEvent[];
+  providers: AdminCount[];
+  errorRate: AdminCount[];
 }
 
 export interface AdminUser {

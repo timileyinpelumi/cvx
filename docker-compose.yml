@@ -9,7 +9,12 @@
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        # Baked into the static pages' metadata, so the preview cards point at
+        # the real site rather than at localhost.
+        CVX_BASE_URL: ${CVX_BASE_URL:?set CVX_BASE_URL in .env}
     restart: unless-stopped
     env_file: .env
     environment:

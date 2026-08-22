@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ExternalLink, LogOut, Plus, Trash2, Upload } from "lucide-react";
 import { api, previewURL } from "@/lib/api";
@@ -9,29 +8,16 @@ import { cx } from "@/lib/format";
 import { ACCENTS, THEMES, type ResumeDensity, type ResumeStyle, type Settings } from "@/lib/types";
 import { useSession } from "@/components/Session";
 import { useToast } from "@/components/Toast";
+import { ProfileDetails } from "@/components/ProfileDetails";
 import { Button, Eyebrow, PageHeader, Skeleton } from "@/components/ui";
 
 export default function AccountPage() {
   return (
     <>
-      <PageHeader title="Account" meta="Your profile and resume settings" />
+      <PageHeader title="Account" meta="Everything cvx knows about you" />
       <div className="mx-auto max-w-[46rem] space-y-8 px-5 py-6 sm:px-7">
         <RecordSection />
-        <section>
-          <Eyebrow>Your details</Eyebrow>
-          <div className="panel mt-4 flex flex-wrap items-center gap-3 p-5">
-            <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-medium">Edit your profile</p>
-              <p className="mt-0.5 text-[11.5px] leading-snug text-fg-muted">
-                Name, contact details, your three links, and the certifications, languages and
-                interests that finish a short page.
-              </p>
-            </div>
-            <Link href="/profile">
-              <Button size="sm">Open</Button>
-            </Link>
-          </div>
-        </section>
+        <ProfileDetails />
         <PreferencesSection />
         <SessionSection />
       </div>

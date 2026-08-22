@@ -22,6 +22,11 @@ RUN bun install --frozen-lockfile
 COPY web/ ./
 # The API is a loopback hop now, so the rewrites are built against localhost.
 ENV CVX_API_ORIGIN=http://127.0.0.1:8080
+# Static pages bake their metadata at build time, so the public origin has to
+# be known here: with the wrong value every scraper is handed a localhost URL
+# and no preview card renders anywhere.
+ARG CVX_BASE_URL=http://localhost:3000
+ENV CVX_BASE_URL=$CVX_BASE_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN bun run build
 
@@ -33,7 +38,8 @@ WORKDIR /app
 COPY --from=api /cvx /app/cvx
 COPY --from=web /src/.next/standalone ./web/
 COPY --from=web /src/.next/static ./web/.next/static
-# No public/ directory: the icon, manifest and OG image are all routes.
+# The rasterised icons; the SVG, manifest and OG image are routes.
+COPY --from=web /src/public ./web/public
 
 # data/ is the SQLite volume mount; the app creates data/cvx.db inside it.
 RUN mkdir -p /app/data && chown -R cvx /app

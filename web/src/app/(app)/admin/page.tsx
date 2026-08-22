@@ -126,8 +126,41 @@ function Overview({ days }: { days: number }) {
         </dl>
       </Panel>
 
-      <Panel title={`Resumes a day, last ${data.windowDays} days`}>
-        <Sparkline points={data.daily} />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel title={`Resumes a day, last ${data.windowDays} days`}>
+          <Sparkline points={data.daily} />
+        </Panel>
+        <Panel title="Errors a day">
+          <Sparkline points={data.errorRate} failures />
+        </Panel>
+      </div>
+
+      <Panel title="Output quality">
+        {data.quality.generations === 0 ? (
+          <Empty>No resumes in this window.</Empty>
+        ) : (
+          <dl className="grid gap-x-6 gap-y-2 text-[12.5px] sm:grid-cols-2">
+            <Field label="Average fit" value={`${Math.round(data.quality.avgFit)} of 100`} />
+            <Field label="Average page fill" value={percent(data.quality.avgFill)} />
+            <Field label="Trimmed to fit" value={percent(data.quality.trimmedShare)} />
+            <Field label="Ended short" value={percent(data.quality.shortPageRate)} />
+            <Field label="Grounding warnings" value={percent(data.quality.warnedShare)} />
+            <Field label="Resumes measured" value={String(data.quality.generations)} />
+          </dl>
+        )}
+      </Panel>
+
+      <Panel title="How long things take">
+        <Table
+          head={["What", "Calls", "p50", "p95", "Slowest"]}
+          rows={data.latency.map((l) => [
+            l.label,
+            String(l.count),
+            `${l.p50}ms`,
+            `${l.p95}ms`,
+            `${l.max}ms`,
+          ])}
+        />
       </Panel>
 
       <Panel title="Where people stop">
@@ -159,6 +192,36 @@ function Overview({ days }: { days: number }) {
               `${u.ms ?? 0}ms`,
               compact(u.tokens ?? 0),
               money(u.cost ?? 0),
+            ])}
+          />
+        </Panel>
+      )}
+
+      {data.slowest.length > 0 && (
+        <Panel title="Slowest requests">
+          <ul className="divide-y divide-line">
+            {data.slowest.map((e) => (
+              <li key={e.id} className="flex flex-wrap items-baseline gap-x-3 py-2 first:pt-0 last:pb-0">
+                <span className="num shrink-0 text-[12px] font-medium">{e.ms}ms</span>
+                <span className="min-w-0 flex-1 truncate text-[12.5px]">{e.target}</span>
+                <span className="num text-[11px] text-fg-faint">
+                  {String(e.meta?.id ?? "")} · {relativeAge(e.at)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
+
+      {data.providers.length > 0 && (
+        <Panel title="Model calls by provider">
+          <Table
+            head={["Provider", "Calls", "Failed", "Avg"]}
+            rows={data.providers.map((p) => [
+              p.label,
+              String(p.total),
+              String(p.failed),
+              `${p.ms ?? 0}ms`,
             ])}
           />
         </Panel>
@@ -213,10 +276,11 @@ function Funnel({ funnel }: { funnel: AdminOverview["funnel"] }) {
 
 /** An inline SVG bar chart. A charting library would be several hundred
  *  kilobytes for fourteen rectangles. */
-function Sparkline({ points }: { points: AdminCount[] }) {
+function Sparkline({ points, failures = false }: { points: AdminCount[]; failures?: boolean }) {
   if (points.length === 0) return <Empty>Nothing yet.</Empty>;
 
-  const top = Math.max(...points.map((p) => p.total), 1);
+  const value = (p: AdminCount) => (failures ? p.failed : p.total);
+  const top = Math.max(...points.map(value), 1);
   const width = 100;
   const gap = 1.5;
   const barWidth = (width - gap * (points.length - 1)) / points.length;
@@ -226,7 +290,8 @@ function Sparkline({ points }: { points: AdminCount[] }) {
       <svg viewBox={`0 0 ${width} 28`} preserveAspectRatio="none" className="h-16 w-full" role="img"
         aria-label={`Daily totals, peak ${top}`}>
         {points.map((p, i) => {
-          const h = Math.max((p.total / top) * 26, p.total > 0 ? 1.5 : 0.4);
+          const n = value(p);
+          const h = Math.max((n / top) * 26, n > 0 ? 1.5 : 0.4);
           return (
             <rect
               key={p.label}
@@ -235,7 +300,9 @@ function Sparkline({ points }: { points: AdminCount[] }) {
               width={barWidth}
               height={h}
               rx={0.6}
-              className={p.failed > 0 ? "fill-missing" : p.total > 0 ? "fill-ink" : "fill-line"}
+              className={
+                failures ? (n > 0 ? "fill-missing" : "fill-line") : n > 0 ? "fill-ink" : "fill-line"
+              }
             >
               <title>{`${p.label}: ${p.total}${p.failed ? `, ${p.failed} failed` : ""}`}</title>
             </rect>
@@ -464,6 +531,10 @@ function Empty({ children }: { children: React.ReactNode }) {
 }
 
 /* --------------------------------- format -------------------------------- */
+
+function percent(n: number): string {
+  return `${Math.round(n * 100)}%`;
+}
 
 function money(n: number): string {
   if (n === 0) return "$0";
