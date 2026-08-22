@@ -11,15 +11,59 @@ import { useToast } from "@/components/Toast";
 import { ProfileDetails } from "@/components/ProfileDetails";
 import { Button, Eyebrow, PageHeader, Skeleton } from "@/components/ui";
 
+/** Three groups, because one scroll held four unrelated jobs: the material
+ *  resumes are built from, how they look, and the account itself. */
+const TABS = [
+  { id: "you", label: "You", meta: "What your resumes are built from" },
+  { id: "resume", label: "Resume", meta: "How every resume looks and reads" },
+  { id: "account", label: "Account", meta: "Signing in and out" },
+] as const;
+
+type TabID = (typeof TABS)[number]["id"];
+
 export default function AccountPage() {
+  const [tab, setTab] = useState<TabID>("you");
+  const current = TABS.find((t) => t.id === tab) ?? TABS[0];
+
   return (
     <>
-      <PageHeader title="Account" meta="Everything cvx knows about you" />
-      <div className="mx-auto max-w-[46rem] space-y-8 px-5 py-6 sm:px-7">
-        <RecordSection />
-        <ProfileDetails />
-        <PreferencesSection />
-        <SessionSection />
+      <PageHeader title="Account" meta={current.meta} />
+      <div className="mx-auto max-w-[46rem] px-5 py-6 sm:px-7">
+        <div
+          role="tablist"
+          aria-label="Account sections"
+          className="mb-5 flex gap-1.5 overflow-x-auto"
+        >
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={cx(
+                "h-8 shrink-0 rounded-full border px-3.5 text-[12.5px] font-medium",
+                "transition-colors duration-[130ms]",
+                tab === t.id
+                  ? "border-ink bg-ink-soft text-ink"
+                  : "border-line text-fg-muted hover:border-line-strong hover:text-fg",
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="space-y-8">
+          {tab === "you" && (
+            <>
+              <RecordSection />
+              <ProfileDetails />
+            </>
+          )}
+          {tab === "resume" && <PreferencesSection />}
+          {tab === "account" && <SessionSection />}
+        </div>
       </div>
     </>
   );
