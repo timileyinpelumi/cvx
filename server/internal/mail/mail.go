@@ -115,7 +115,7 @@ func Send(to string, t model.Tailored, pdf []byte, filename string, endpoint str
 // SendRecruiter posts the forwardable recruiter-facing email: just the
 // application note and the attachments, none of the notification content.
 // Same gate and transport as Send.
-func SendRecruiter(to string, subject string, paragraphs []string, closing string, name string, pdf []byte, filename string, endpoint string, extra ...Attachment) (bool, error) {
+func SendRecruiter(to string, re model.RecruiterEmail, name string, pdf []byte, filename string, endpoint string, extra ...Attachment) (bool, error) {
 	apiKey := os.Getenv("RESEND_API_KEY")
 	if apiKey == "" || to == "" {
 		return false, nil
@@ -140,8 +140,8 @@ func SendRecruiter(to string, subject string, paragraphs []string, closing strin
 	reqBody := sendRequest{
 		From:        from,
 		To:          to,
-		Subject:     subject,
-		HTML:        renderRecruiter(paragraphs, closing, name),
+		Subject:     re.Subject,
+		HTML:        renderRecruiter(re, name),
 		Attachments: attachments,
 	}
 
@@ -258,15 +258,21 @@ func renderNotification(t model.Tailored, attachmentNames []string) string {
 // renderRecruiter builds the forwardable application email. Deliberately
 // unbranded: it is the candidate's own message, so it carries clean
 // typography and a signature, nothing that points back at cvx.
-func renderRecruiter(paragraphs []string, closing, name string) string {
+func renderRecruiter(re model.RecruiterEmail, name string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, `<div style="max-width:600px;font-family:%s;font-size:15px;line-height:1.6;color:%s;">`, mailFont, mailFg)
-	for _, para := range paragraphs {
+	greeting := re.Greeting
+	if greeting == "" {
+		greeting = model.RecruiterGreeting("")
+	}
+	fmt.Fprintf(&b, `<p style="margin:0 0 14px;">%s</p>`, html.EscapeString(greeting))
+	for _, para := range re.Paragraphs {
 		if para == "" {
 			continue
 		}
 		fmt.Fprintf(&b, `<p style="margin:0 0 14px;">%s</p>`, html.EscapeString(para))
 	}
+	closing := re.Closing
 	if closing == "" {
 		closing = "Best regards,"
 	}

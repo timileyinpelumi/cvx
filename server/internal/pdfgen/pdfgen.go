@@ -167,14 +167,16 @@ func renderHeader(pdf *fpdf.Fpdf, cfg theme, p model.Profile, t model.Tailored) 
 		gray := grayComponent()
 		pdf.SetTextColor(gray, gray, gray)
 		pdf.SetFont(cfg.bodyFamily, "", cfg.headlinePt)
-		pdf.CellFormat(w, lineHeight(cfg.headlinePt, cfg.leading), t.Headline, "", 1, "L", false, 0, "")
+		// MultiCell, not CellFormat: a headline wider than the text block
+		// would otherwise run straight off the right margin.
+		pdf.MultiCell(w, lineHeight(cfg.headlinePt, cfg.leading), t.Headline, "", "L", false)
 	}
 
-	contact := contactLine(p)
+	contact := fittedContactLine(pdf, cfg, w, p, cfg.hidePhone, cfg.hideLocation)
 	if contact != "" {
 		pdf.SetTextColor(0, 0, 0)
 		pdf.SetFont(cfg.bodyFamily, "", cfg.contactPt)
-		pdf.CellFormat(w, lineHeight(cfg.contactPt, cfg.leading), contact, "", 1, "L", false, 0, "")
+		pdf.MultiCell(w, lineHeight(cfg.contactPt, cfg.leading), contact, "", "L", false)
 	}
 
 	if t.Summary != "" {
@@ -185,7 +187,16 @@ func renderHeader(pdf *fpdf.Fpdf, cfg theme, p model.Profile, t model.Tailored) 
 	}
 }
 
+// contactLine builds the identity row: how to reach the candidate, then the
+// handful of links that say who they are. Project links (repos, gists,
+// deployed side projects) are deliberately absent — model.IdentityLinks
+// drops them — because they belong to the item that cites them, not to the
+// line under the name.
 func contactLine(p model.Profile) string {
+	return joinContact(p, model.IdentityLinks(p))
+}
+
+func joinContact(p model.Profile, links []model.Link) string {
 	var parts []string
 	if p.Email != "" {
 		parts = append(parts, p.Email)
@@ -196,17 +207,37 @@ func contactLine(p model.Profile) string {
 	if p.Location != "" {
 		parts = append(parts, p.Location)
 	}
-	for _, l := range p.Links {
-		if l.URL == "" {
-			continue
-		}
-		if l.Label != "" {
-			parts = append(parts, l.Label)
-		} else {
-			parts = append(parts, l.URL)
+	for _, l := range links {
+		if d := model.LinkDisplay(l); d != "" {
+			parts = append(parts, d)
 		}
 	}
 	return strings.Join(parts, "  ·  ")
+}
+
+// fittedContactLine is contactLine trimmed to one line: identity links are
+// dropped from the least load-bearing end until the row fits the text block.
+// A long email plus a phone, a city, and three links can exceed the width on
+// its own, and a contact row that wraps onto a second line reads as an
+// accident. The reach details (email, phone, location) are never dropped.
+func fittedContactLine(pdf *fpdf.Fpdf, cfg theme, w float64, p model.Profile, hidePhone, hideLocation bool) string {
+	pdf.SetFont(cfg.bodyFamily, "", cfg.contactPt)
+
+	if hidePhone {
+		p.Phone = ""
+	}
+	if hideLocation {
+		p.Location = ""
+	}
+
+	links := model.IdentityLinks(p)
+	for {
+		line := joinContact(p, links)
+		if len(links) == 0 || pdf.GetStringWidth(line) <= w {
+			return line
+		}
+		links = links[:len(links)-1]
+	}
 }
 
 // renderSectionTitle draws a section title (uppercase, display face) with the

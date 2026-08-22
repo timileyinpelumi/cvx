@@ -25,7 +25,9 @@ export default function ResumesPage() {
     if (!q) return rows;
     return rows.filter(
       (r) =>
-        r.targetRole.toLowerCase().includes(q) || r.filename.toLowerCase().includes(q),
+        r.targetRole.toLowerCase().includes(q) ||
+        r.roleSummary.toLowerCase().includes(q) ||
+        r.filename.toLowerCase().includes(q),
     );
   }, [rows, query]);
 
@@ -194,7 +196,14 @@ function Row({
       <Link href={`/resumes/${row.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-3.5">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13.5px] font-medium">{row.targetRole}</p>
-          <p className="num truncate text-[11.5px] text-fg-faint">{row.filename}</p>
+          <p
+            className={cx(
+              "truncate text-[11.5px] text-fg-faint",
+              !row.roleSummary && "num",
+            )}
+          >
+            {row.roleSummary || row.filename}
+          </p>
         </div>
 
         {row.status && (

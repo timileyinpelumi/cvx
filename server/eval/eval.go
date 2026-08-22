@@ -89,7 +89,24 @@ func deterministicChecks(p model.Profile, t model.Tailored) []Check {
 		headlineCheck(t),
 		gapsCheck(t),
 		selectedSkillsCheck(p, t),
+		voiceCheck(p, t),
 	}
+}
+
+// voiceCheck holds the eval to the same voice rule the pipeline repairs
+// against: implied first person, no pronouns, never the candidate's name.
+func voiceCheck(p model.Profile, t model.Tailored) Check {
+	var found []string
+	for _, issue := range model.ShapeIssues(p, t) {
+		if strings.Contains(issue, "pronoun") || strings.Contains(issue, "names the candidate") ||
+			strings.Contains(issue, "someone else were introducing") {
+			found = append(found, issue)
+		}
+	}
+	if len(found) > 0 {
+		return Check{Name: "voice", Pass: false, Detail: strings.Join(found, "; ")}
+	}
+	return Check{Name: "voice", Pass: true, Detail: "implied first person"}
 }
 
 func itemCountCheck(t model.Tailored) Check {
@@ -124,8 +141,9 @@ func summaryCheck(t model.Tailored) Check {
 		return Check{Name: "summary", Pass: false, Detail: "summary is empty"}
 	}
 	words := len(strings.Fields(t.Summary))
-	if words > 60 {
-		return Check{Name: "summary", Pass: false, Detail: fmt.Sprintf("summary is %d words, want <=60", words)}
+	if words < model.MinSummaryWords || words > model.MaxSummaryWords {
+		return Check{Name: "summary", Pass: false, Detail: fmt.Sprintf(
+			"summary is %d words, want %d-%d", words, model.MinSummaryWords, model.MaxSummaryWords)}
 	}
 	return Check{Name: "summary", Pass: true, Detail: fmt.Sprintf("%d words", words)}
 }
@@ -209,7 +227,15 @@ func isGuardrailError(err error) bool {
 //
 // Either way there is nothing valid to run the remaining checks or the
 // judge against, so the fixture is skipped past that point.
-func Run(ctx context.Context, gen ai.LLM, judge ai.LLM, fixturesDir string, ids []string, coverLetters bool) (Report, error) {
+// RunOptions selects which artifacts a run generates and judges. The resume
+// is always run; the cover letter and the application email each cost one
+// generation plus one judge call per fixture.
+type RunOptions struct {
+	CoverLetters bool
+	Emails       bool
+}
+
+func Run(ctx context.Context, gen ai.LLM, judge ai.LLM, fixturesDir string, ids []string, opts RunOptions) (Report, error) {
 	entries, err := loadFixtureIndex(fixturesDir)
 	if err != nil {
 		return Report{}, err
@@ -231,10 +257,15 @@ func Run(ctx context.Context, gen ai.LLM, judge ai.LLM, fixturesDir string, ids 
 			return Report{}, fmt.Errorf("eval: read %s: %w", e.File, err)
 		}
 		jdText := string(jdBytes)
+		// The harness deliberately does not spend a call parsing the
+		// fixture: it feeds the raw posting text, which is what the
+		// generators fall back to for everything a parse would have
+		// structured.
+		posting := model.Posting{Usable: true, Title: e.Title, Raw: jdText}
 
 		fr := FixtureResult{ID: e.ID, Title: e.Title}
 
-		tailored, err := ai.Tailor(ctx, gen, profile, jdText)
+		tailored, err := ai.Tailor(ctx, gen, profile, posting)
 		if err != nil {
 			if isGuardrailError(err) {
 				fr.Checks = []Check{{Name: "guardrail", Pass: false, Detail: err.Error()}}
@@ -255,14 +286,25 @@ func Run(ctx context.Context, gen ai.LLM, judge ai.LLM, fixturesDir string, ids 
 		}
 		fr.Resume = &rubric
 
-		if coverLetters {
-			cl, err := ai.CoverLetter(ctx, gen, profile, jdText)
+		if opts.CoverLetters {
+			cl, err := ai.CoverLetter(ctx, gen, profile, posting)
 			if err != nil {
 				fr.CoverError = err.Error()
 			} else if coverRubric, err := JudgeCoverLetter(ctx, judge, profile, jdText, cl); err != nil {
 				fr.CoverError = fmt.Sprintf("judge cover letter: %v", err)
 			} else {
 				fr.Cover = &coverRubric
+			}
+		}
+
+		if opts.Emails {
+			re, err := ai.RecruiterEmail(ctx, gen, profile, posting)
+			if err != nil {
+				fr.EmailError = err.Error()
+			} else if emailRubric, err := JudgeRecruiterEmail(ctx, judge, profile, jdText, re); err != nil {
+				fr.EmailError = fmt.Sprintf("judge email: %v", err)
+			} else {
+				fr.Email = &emailRubric
 			}
 		}
 

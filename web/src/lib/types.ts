@@ -8,15 +8,59 @@ export interface Gap {
   severity: Severity | string;
 }
 
+export interface KeywordHit {
+  keyword: string;
+  covered: boolean;
+  where?: string;
+}
+
+export interface Coverage {
+  hits: KeywordHit[];
+  covered: number;
+  total: number;
+}
+
+export type FitBand = "strong" | "fair" | "stretch";
+
+export interface Fit {
+  score: number;
+  band: FitBand;
+  reasons: string[];
+}
+
+export interface RecruiterEmail {
+  subject: string;
+  greeting: string;
+  paragraphs: string[];
+  closing: string;
+}
+
+export interface ProvenanceEntry {
+  original: string;
+  itemTitle: string;
+  organization: string;
+}
+
+export type Provenance = Record<string, ProvenanceEntry>;
+
+export interface Ungrounded {
+  artifact: string;
+  claim: string;
+  profileSays: string;
+}
+
 export interface GenerationMeta {
   id: string;
   targetRole: string;
+  roleSummary: string;
   filename: string;
   createdAt: string;
   gaps: Gap[];
   whatChanged: string[];
   hasCoverLetter: boolean;
   pinned: boolean;
+  fit?: Fit;
+  coverage?: Coverage;
   status: ApplicationStatus;
   statusAt: string;
 }
@@ -60,6 +104,7 @@ export interface TSection {
 
 export interface Tailored {
   targetRole: string;
+  roleSummary: string;
   headline: string;
   summary: string;
   selectedSkills: string[];
@@ -109,6 +154,9 @@ export interface GenerateResult {
   coverFilename: string;
   coverLetter: boolean;
   recruiterEmail: boolean;
+  fit?: Fit;
+  coverage?: Coverage;
+  proseWarnings?: Ungrounded[];
 }
 
 export type ResumeTheme = "classic" | "modern" | "compact";
@@ -119,6 +167,8 @@ export interface ResumeStyle {
   accent: string;
   density: ResumeDensity;
   skillsFirst: boolean;
+  hidePhone: boolean;
+  hideLocation: boolean;
 }
 
 export type GenerationTone = "plain" | "confident";

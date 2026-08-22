@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -855,5 +856,142 @@ func TestPinnedGenerationsSortFirst(t *testing.T) {
 	}
 	if found, _ := s.SetGenerationPinned(int64(2), newer.ID, true); found {
 		t.Fatal("another user must not pin this row")
+	}
+}
+
+func TestSoftDeleteUserTombstonesAndFreesIdentity(t *testing.T) {
+	s := open(t)
+	created, err := s.UpsertUser("google", "g-9", "ada@example.com", "Ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := created.ID
+	if err := s.SaveProfile(first, model.Profile{Summary: "kept"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SoftDeleteUser(first); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := s.GetUser(first); err != nil || got != nil {
+		t.Fatalf("tombstoned user still resolves: %v, %v", got, err)
+	}
+	var email, providerID, deletedAt string
+	if err := s.db.QueryRow(
+		`SELECT email, provider_id, deleted_at FROM users WHERE id = ?`, first,
+	).Scan(&email, &providerID, &deletedAt); err != nil {
+		t.Fatalf("row should still exist: %v", err)
+	}
+	if !strings.HasPrefix(email, "deleted_") || !strings.HasSuffix(email, "ada@example.com") {
+		t.Fatalf("email not tombstoned: %q", email)
+	}
+	if !strings.HasPrefix(providerID, "deleted_") || !strings.HasSuffix(providerID, "g-9") {
+		t.Fatalf("provider_id not tombstoned: %q", providerID)
+	}
+
+	// The data stays put; only the account is closed.
+	var profiles int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM profile WHERE user_id = ?`, first).Scan(&profiles); err != nil {
+		t.Fatal(err)
+	}
+	if profiles != 1 {
+		t.Fatalf("want profile kept, got %d rows", profiles)
+	}
+
+	second, err := s.UpsertUser("google", "g-9", "ada@example.com", "Ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ID == first {
+		t.Fatal("re-signup reopened the deleted account")
+	}
+	if p, err := s.LoadProfile(second.ID); err != nil || p != nil {
+		t.Fatalf("fresh account inherited a profile: %+v, %v", p, err)
+	}
+}
+
+func TestSoftDeleteUserTwiceKeepsIdentitiesUnique(t *testing.T) {
+	s := open(t)
+	for i := 0; i < 2; i++ {
+		u, err := s.UpsertUser("google", "g-dup", "dup@example.com", "Dup")
+		if err != nil {
+			t.Fatalf("signup %d: %v", i, err)
+		}
+		if err := s.SoftDeleteUser(u.ID); err != nil {
+			t.Fatalf("delete %d: %v", i, err)
+		}
+	}
+}
+
+func TestListGenerationsDerivesFitAndCoverage(t *testing.T) {
+	s := open(t)
+	userID := testUser(t, s, "google", "fit-user")
+
+	ta := model.Tailored{
+		TargetRole:     "Backend Engineer",
+		SelectedSkills: []string{"Go", "PostgreSQL"},
+		Gaps:           []model.Gap{{Requirement: "Kubernetes", Severity: "missing"}},
+		Sections: []model.TSection{{Title: "Experience", Items: []model.TItem{{
+			SourceID: "item-0", Title: "Engineer",
+			Bullets: []model.TBullet{{SourceBulletID: "item-0-b-0", Text: "Built it"}, {SourceBulletID: "item-0-b-1", Text: "Shipped it"}},
+		}}}},
+	}
+	meta, err := s.SaveGeneration(userID, ta, []byte("pdf"), "a.pdf", nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Before a posting is attached there is nothing to score against.
+	list, err := s.ListGenerations(userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list[0].Fit != nil || list[0].Coverage != nil {
+		t.Fatalf("want no fit without a posting, got %+v", list[0])
+	}
+
+	if err := s.SavePosting(userID, meta.ID, model.Posting{
+		Usable: true, Title: "Backend Engineer", Keywords: []string{"Go", "PostgreSQL", "Kubernetes", "Kafka"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	list, err = s.ListGenerations(userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := list[0]
+	if got.Coverage == nil || got.Coverage.Covered != 2 || got.Coverage.Total != 4 {
+		t.Fatalf("coverage wrong: %+v", got.Coverage)
+	}
+	if got.Fit == nil || got.Fit.Score == 100 {
+		t.Fatalf("fit should reflect the gap and the misses: %+v", got.Fit)
+	}
+}
+
+func TestGetPostingRoundTrips(t *testing.T) {
+	s := open(t)
+	userID := testUser(t, s, "google", "posting-user")
+	meta, err := s.SaveGeneration(userID, model.Tailored{TargetRole: "R"}, []byte("pdf"), "a.pdf", nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if p, err := s.GetPosting(userID, meta.ID); err != nil || p != nil {
+		t.Fatalf("want nil before save, got %v, %v", p, err)
+	}
+	want := model.Posting{Usable: true, Title: "Backend Engineer", Company: "Venix"}
+	if err := s.SavePosting(userID, meta.ID, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetPosting(userID, meta.ID)
+	if err != nil || got == nil || got.Title != want.Title || got.Company != want.Company {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+
+	// Scoped per user, like every other generation read.
+	other := testUser(t, s, "google", "posting-other")
+	if p, err := s.GetPosting(other, meta.ID); err != nil || p != nil {
+		t.Fatalf("another user read the posting: %v, %v", p, err)
 	}
 }

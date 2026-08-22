@@ -89,6 +89,8 @@ func main() {
 	label := flag.String("label", "", "name for this eval run (required)")
 	idsFlag := flag.String("ids", "", "comma-separated fixture ids to run (default: all)")
 	cover := flag.Bool("cover", false, "also generate and judge cover letters")
+	emails := flag.Bool("email", false, "also generate and judge application emails")
+	baseline := flag.String("baseline", "", "path to a baseline report; exit non-zero if this run regresses against it")
 	fixturesDir := flag.String("fixtures", "eval/fixtures", "path to the fixtures directory")
 	judgeProviderFlag := flag.String("judge-provider", "", "override judge provider (default: env CVX_EVAL_JUDGE_PROVIDER, or groq)")
 	judgeModelFlag := flag.String("judge-model", "", "override judge model (default: env CVX_EVAL_JUDGE_MODEL, or openai/gpt-oss-20b)")
@@ -133,7 +135,8 @@ func main() {
 	}
 	slog.Info("judge", "provider", judgeProvider, "model", judgeModel)
 
-	report, err := eval.Run(context.Background(), gen, judge, *fixturesDir, ids, *cover)
+	report, err := eval.Run(context.Background(), gen, judge, *fixturesDir, ids,
+		eval.RunOptions{CoverLetters: *cover, Emails: *emails})
 	if err != nil {
 		slog.Error("eval run", "err", err)
 		os.Exit(1)
@@ -151,4 +154,20 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println(path)
+
+	if *baseline != "" {
+		regressions, err := eval.CompareToBaseline(report, *baseline)
+		if err != nil {
+			slog.Error("compare to baseline", "err", err)
+			os.Exit(1)
+		}
+		if len(regressions) > 0 {
+			fmt.Fprintf(os.Stderr, "\ncvxeval: regressed against %s\n", *baseline)
+			for _, r := range regressions {
+				fmt.Fprintf(os.Stderr, "  - %s\n", r)
+			}
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "\ncvxeval: no regression against %s\n", *baseline)
+	}
 }

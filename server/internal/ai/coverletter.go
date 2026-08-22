@@ -16,8 +16,12 @@ profile most concretely supports, and the specific profile facts — named
 systems, technologies, numbers, outcomes — that evidence each one. Build the
 letter out of those.
 
-Structure — return a "greeting", 2 or 3 "paragraphs", and a "closing":
-- Paragraph 1 names the role and the single strongest genuine reason this
+Structure — return 2 or 3 "paragraphs" and a "closing". The greeting is
+composed for you from the posting; do not write one, and do not open a
+paragraph with one:
+- The FIRST sentence of paragraph 1 states what this is: that the candidate
+  is applying, the role by its title, and the company by name when the
+  posting gives one. Then give the single strongest genuine reason this
   candidate fits it.
 - Paragraph 2 gives the concrete evidence: systems built, technologies used,
   and measurable outcomes drawn from the profile, each tied to something the
@@ -44,24 +48,24 @@ Hard rules:
 - Write in sentence case throughout (not Title Case, not all caps).
 - Never leave placeholder brackets like [Company] or [Role] in the output —
   write real prose, or omit the detail if it is not known.
-- Address the letter to the role's company by name only if the role input
-  names a specific company. Otherwise use the generic greeting
-  "Dear hiring team,".`
+- The closing is the exact sign-off the angle below dictates.`
 
 // CoverLetter writes a short cover letter for roleInput, citing only facts
 // present in p. Unlike Tailor, there is no id-based guardrail to validate
 // (this is prose, not a citation-structured document) — the system prompt is
 // the only defense against fabrication.
-func CoverLetter(ctx context.Context, llm LLM, p model.Profile, roleInput string) (model.CoverLetter, error) {
+func CoverLetter(ctx context.Context, llm LLM, p model.Profile, posting model.Posting) (model.CoverLetter, error) {
 	profileJSON, err := json.Marshal(p)
 	if err != nil {
 		return model.CoverLetter{}, fmt.Errorf("cover letter: marshal profile: %w", err)
 	}
 
-	blocks := []ContentBlock{
-		{Text: fmt.Sprintf("Profile JSON:\n%s", profileJSON)},
-		{Text: fmt.Sprintf("Target role:\n%s", roleInput)},
-	}
+	flavor, variant := pickFlavor(), pickVariant()
+	blocks := append(
+		[]ContentBlock{{Text: fmt.Sprintf("Profile JSON:\n%s", profileJSON)}},
+		postingBlocks(posting)...,
+	)
+	blocks = append(blocks, flavor.letterInstructions())
 
 	// Bounded QC loop: exactly one generation plus at most one corrective
 	// rewrite — never a retry-until-clean loop; a second bad draft is a hard
@@ -77,6 +81,8 @@ func CoverLetter(ctx context.Context, llm LLM, p model.Profile, roleInput string
 		if err := json.Unmarshal(raw, &cl); err != nil {
 			return model.CoverLetter{}, fmt.Errorf("cover letter: unmarshal response: %w", err)
 		}
+
+		cl.Greeting = model.Greeting(posting.GreetingInputFrom(true), variant)
 
 		violations = checkCoverLetter(cl)
 		if len(violations) == 0 {

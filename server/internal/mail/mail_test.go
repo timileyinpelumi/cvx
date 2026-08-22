@@ -195,8 +195,13 @@ func TestSendRecruiter(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ok, err := SendRecruiter("me@example.com", "Application for Backend Engineer",
-		[]string{"I am applying for the Backend Engineer role."}, "Best regards,", "Ada Example",
+	re := model.RecruiterEmail{
+		Subject:    "Application for Backend Engineer",
+		Greeting:   "Hello Jane,",
+		Paragraphs: []string{"I am applying for the Backend Engineer role."},
+		Closing:    "Best regards,",
+	}
+	ok, err := SendRecruiter("me@example.com", re, "Ada Example",
 		[]byte("pdf"), "resume.pdf", srv.URL,
 		Attachment{Filename: "cover.pdf", Content: []byte("cover")})
 	if err != nil || !ok {
@@ -208,6 +213,9 @@ func TestSendRecruiter(t *testing.T) {
 	if !strings.Contains(got.HTML, "applying for the Backend Engineer role") || !strings.Contains(got.HTML, "Ada Example") {
 		t.Fatalf("body: %s", got.HTML)
 	}
+	if !strings.HasPrefix(stripTags(got.HTML), "Hello Jane,") {
+		t.Fatalf("email does not open with the greeting: %s", got.HTML)
+	}
 	if strings.Contains(got.HTML, "Gaps") || strings.Contains(got.HTML, "What changed") {
 		t.Fatalf("notification content leaked into recruiter email: %s", got.HTML)
 	}
@@ -218,7 +226,7 @@ func TestSendRecruiter(t *testing.T) {
 
 func TestSendRecruiterGate(t *testing.T) {
 	t.Setenv("RESEND_API_KEY", "")
-	ok, err := SendRecruiter("me@example.com", "s", nil, "", "n", nil, "r.pdf", "")
+	ok, err := SendRecruiter("me@example.com", model.RecruiterEmail{Subject: "s"}, "n", nil, "r.pdf", "")
 	if err != nil || ok {
 		t.Fatalf("want false,nil got %v,%v", ok, err)
 	}
@@ -252,9 +260,13 @@ func TestRenderNotificationStructure(t *testing.T) {
 }
 
 func TestRenderRecruiterIsUnbranded(t *testing.T) {
-	out := renderRecruiter([]string{"I am applying for the role."}, "Best regards,", "Ada Lovelace")
+	out := renderRecruiter(model.RecruiterEmail{
+		Greeting:   "Hello HR,",
+		Paragraphs: []string{"I am applying for the role."},
+		Closing:    "Best regards,",
+	}, "Ada Lovelace")
 
-	for _, want := range []string{"I am applying for the role.", "Best regards,", "Ada Lovelace"} {
+	for _, want := range []string{"Hello HR,", "I am applying for the role.", "Best regards,", "Ada Lovelace"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("recruiter email missing %q", want)
 		}
@@ -263,4 +275,31 @@ func TestRenderRecruiterIsUnbranded(t *testing.T) {
 	if strings.Contains(strings.ToLower(out), "cvx") {
 		t.Error("recruiter email must not carry cvx branding")
 	}
+}
+
+// An email that reached the sender without a greeting still opens with one:
+// the greeting is the guarantee, not a field the caller may forget.
+func TestRenderRecruiterAlwaysGreets(t *testing.T) {
+	out := renderRecruiter(model.RecruiterEmail{Paragraphs: []string{"I am applying."}}, "Ada")
+	if !strings.HasPrefix(stripTags(out), "Hello HR,") {
+		t.Fatalf("missing fallback greeting: %s", out)
+	}
+}
+
+// stripTags reduces the rendered HTML to its text so a test can assert on
+// reading order rather than on markup.
+func stripTags(h string) string {
+	var b strings.Builder
+	depth := 0
+	for _, r := range h {
+		switch {
+		case r == '<':
+			depth++
+		case r == '>':
+			depth--
+		case depth == 0:
+			b.WriteRune(r)
+		}
+	}
+	return strings.TrimSpace(b.String())
 }

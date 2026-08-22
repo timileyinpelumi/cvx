@@ -10,6 +10,11 @@ type Style struct {
 	Accent      string `json:"accent"`
 	Density     string `json:"density"`
 	SkillsFirst bool   `json:"skillsFirst"`
+	// HidePhone and HideLocation keep contact details off the page. Resumes
+	// get posted to job boards and forwarded on, and a phone number or a
+	// home city on a public document is not something you can take back.
+	HidePhone    bool `json:"hidePhone"`
+	HideLocation bool `json:"hideLocation"`
 }
 
 var Accents = []string{"#1C2422", "#2244D9", "#0F766E", "#7C2D92", "#B3341E", "#B07818"}
@@ -50,6 +55,7 @@ func (s Style) Normalized() Style {
 		}
 	}
 	d.SkillsFirst = s.SkillsFirst
+	d.HidePhone, d.HideLocation = s.HidePhone, s.HideLocation
 	return d
 }
 
@@ -85,6 +91,9 @@ type theme struct {
 	titlesInAccent            bool
 	rulesInAccent             bool
 	twoColSkills              bool
+
+	hidePhone    bool
+	hideLocation bool
 }
 
 func hexRGB(hex string) (int, int, int) {
@@ -107,6 +116,7 @@ func resolveTheme(s Style) theme {
 		sectionTitlePad: 2, orphanMinRemain: 30,
 		accentR: r, accentG: g, accentB: b,
 		nameInAccent: true, titlesInAccent: true, rulesInAccent: false,
+		hidePhone: s.HidePhone, hideLocation: s.HideLocation,
 	}
 
 	switch s.Theme {

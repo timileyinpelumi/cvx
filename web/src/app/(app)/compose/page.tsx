@@ -37,7 +37,8 @@ export default function ComposePage() {
       .catch(() => {});
   }, []);
 
-  const canCompose = role.trim().length > 0 && status !== "composing";
+  const composing = status === "composing";
+  const canCompose = role.trim().length > 0 && !composing;
 
   async function compose() {
     if (!canCompose) return;
@@ -55,11 +56,13 @@ export default function ComposePage() {
       // The generate response carries no target role, but the list does — and
       // refetching also keeps the resumes list correct without a second visit.
       let targetRole: string | undefined;
+      let roleSummary: string | undefined;
       let createdAt: string | undefined;
       try {
         const list = await api.generations();
         const match = list.find((g) => g.id === result.id);
         targetRole = match?.targetRole;
+        roleSummary = match?.roleSummary;
         createdAt = match?.createdAt;
       } catch {
         /* the proof is still usable without the role title */
@@ -68,6 +71,7 @@ export default function ComposePage() {
       setProof({
         id: result.id,
         targetRole,
+        roleSummary,
         createdAt,
         filename: result.filename,
         gaps: result.gaps,
@@ -75,6 +79,9 @@ export default function ComposePage() {
         hasCoverLetter: result.coverLetter,
         coverFilename: result.coverFilename,
         emailed: result.emailed,
+        fit: result.fit,
+        coverage: result.coverage,
+        proseWarnings: result.proseWarnings,
       });
       setStatus("done");
 
@@ -143,10 +150,11 @@ export default function ComposePage() {
             }}
             placeholder="Paste the job ad here, or a link to it."
             spellCheck={false}
+            disabled={composing}
             className={cx(
               "mt-2 w-full rounded-[var(--radius-panel)] border border-line bg-raised p-4",
               "text-[13.5px] leading-relaxed outline-none transition-colors duration-[130ms]",
-              "focus:border-ink",
+              "focus:border-ink disabled:cursor-not-allowed disabled:opacity-60",
               hasPane ? "h-32 sm:h-[13rem]" : "h-40 sm:h-[19rem]",
             )}
           />
@@ -164,12 +172,14 @@ export default function ComposePage() {
               onChange={setCoverLetter}
               label="Cover letter"
               hint="A one page letter to go with it"
+              disabled={composing}
             />
             <Toggle
               checked={recruiterEmail}
               onChange={setRecruiterEmail}
               label="Recruiter email"
               hint="An email you can forward, files attached"
+              disabled={composing}
             />
           </div>
 
@@ -178,9 +188,9 @@ export default function ComposePage() {
               variant="primary"
               onClick={compose}
               disabled={!canCompose}
-              loading={status === "composing"}
+              loading={composing}
             >
-              {status === "composing" ? "Working on it" : "Compose my resume"}
+              {composing ? "Working on it" : "Compose my resume"}
             </Button>
             <kbd className="num hidden rounded border border-line px-1.5 py-0.5 text-[10.5px] text-fg-faint sm:block">
               ⌘↵
@@ -230,21 +240,27 @@ function Toggle({
   onChange,
   label,
   hint,
+  disabled,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
   hint: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cx(
         "rounded-[var(--radius-ctl)] border px-3 py-2.5 text-left transition-colors duration-[130ms]",
-        checked ? "border-ink bg-ink-soft" : "border-line bg-raised hover:border-line-strong",
+        checked ? "border-ink bg-ink-soft" : "border-line bg-raised",
+        disabled
+          ? "cursor-not-allowed opacity-45"
+          : !checked && "hover:border-line-strong",
       )}
     >
       <span className="flex items-center gap-2">

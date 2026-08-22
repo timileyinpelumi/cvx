@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Wand2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { cx } from "@/lib/format";
-import type { Tailored } from "@/lib/types";
+import type { Provenance, Tailored } from "@/lib/types";
 import { useToast } from "./Toast";
 import { Button, Eyebrow } from "./ui";
 
@@ -25,6 +25,21 @@ export function TailorEditor({
   const toast = useToast();
   const [t, setT] = useState<Tailored>(initial);
   const [saving, setSaving] = useState(false);
+  const [provenance, setProvenance] = useState<Provenance>({});
+  const [rewriting, setRewriting] = useState<string | null>(null);
+
+  // Where each line came from. Best effort: the editor works without it, so
+  // a failed fetch just means no "from your profile" lines.
+  useEffect(() => {
+    let live = true;
+    api
+      .provenance(id)
+      .then((p) => live && setProvenance(p))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [id]);
 
   function setBullet(si: number, ii: number, bi: number, text: string) {
     setT((prev) => {
@@ -49,6 +64,19 @@ export function TailorEditor({
       next.sections = next.sections.filter((s) => s.items.length > 0);
       return next;
     });
+  }
+
+  async function rewrite(si: number, ii: number, bi: number) {
+    const bullet = t.sections[si].items[ii].bullets[bi];
+    setRewriting(bullet.sourceBulletId);
+    try {
+      const text = await api.rewriteBullet(id, bullet.sourceBulletId, bullet.text);
+      setBullet(si, ii, bi, text);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Couldn't rewrite that line", "error");
+    } finally {
+      setRewriting(null);
+    }
   }
 
   async function save() {
@@ -109,24 +137,52 @@ export function TailorEditor({
               </div>
 
               <div className="mt-2 space-y-2">
-                {item.bullets.map((b, bi) => (
-                  <div key={b.sourceBulletId} className="flex items-start gap-2">
-                    <textarea
-                      value={b.text}
-                      onChange={(e) => setBullet(si, ii, bi, e.target.value)}
-                      rows={2}
-                      className={fieldClass}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeBullet(si, ii, bi)}
-                      aria-label="Remove bullet"
-                      className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-faint transition-colors duration-[130ms] hover:bg-missing-soft hover:text-missing"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
+                {item.bullets.map((b, bi) => {
+                  const source = provenance[b.sourceBulletId];
+                  return (
+                    <div key={b.sourceBulletId}>
+                      <div className="flex items-start gap-2">
+                        <textarea
+                          value={b.text}
+                          onChange={(e) => setBullet(si, ii, bi, e.target.value)}
+                          rows={2}
+                          className={fieldClass}
+                        />
+                        <div className="mt-1.5 flex shrink-0 flex-col gap-1">
+                          <button
+                            type="button"
+                            onClick={() => rewrite(si, ii, bi)}
+                            disabled={rewriting !== null}
+                            aria-label="Rewrite this line"
+                            title="Rewrite just this line"
+                            className={cx(
+                              "flex h-6 w-6 items-center justify-center rounded text-fg-faint transition-colors duration-[130ms]",
+                              rewriting === b.sourceBulletId
+                                ? "animate-pulse text-ink"
+                                : "hover:bg-ink-soft hover:text-ink",
+                              rewriting !== null && "cursor-not-allowed",
+                            )}
+                          >
+                            <Wand2 size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeBullet(si, ii, bi)}
+                            aria-label="Remove bullet"
+                            className="flex h-6 w-6 items-center justify-center rounded text-fg-faint transition-colors duration-[130ms] hover:bg-missing-soft hover:text-missing"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      </div>
+                      {source && source.original.trim() !== b.text.trim() && (
+                        <p className="mt-1 pr-8 text-[11.5px] leading-relaxed text-fg-faint">
+                          From your profile: {source.original}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}

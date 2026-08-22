@@ -321,6 +321,36 @@ function PreferencesSection() {
         <label className="flex cursor-pointer items-start gap-3 p-5">
           <input
             type="checkbox"
+            checked={style.hidePhone}
+            onChange={(e) => save({ ...style, hidePhone: e.target.checked })}
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--ink)]"
+          />
+          <span>
+            <span className="block text-[13px] font-medium">Keep my phone number off the resume</span>
+            <span className="mt-0.5 block text-[12px] text-fg-muted">
+              Worth it when the resume goes on a job board. Your email still shows.
+            </span>
+          </span>
+        </label>
+
+        <label className="flex cursor-pointer items-start gap-3 p-5">
+          <input
+            type="checkbox"
+            checked={style.hideLocation}
+            onChange={(e) => save({ ...style, hideLocation: e.target.checked })}
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--ink)]"
+          />
+          <span>
+            <span className="block text-[13px] font-medium">Keep my location off the resume</span>
+            <span className="mt-0.5 block text-[12px] text-fg-muted">
+              Some people would rather not say where they live until later.
+            </span>
+          </span>
+        </label>
+
+        <label className="flex cursor-pointer items-start gap-3 p-5">
+          <input
+            type="checkbox"
             checked={settings.emailCopy}
             onChange={(e) => saveAll({ ...settings, emailCopy: e.target.checked })}
             className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--ink)]"
@@ -482,31 +512,113 @@ function SessionSection() {
           </Button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 p-5">
+        <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1">
             <p className="text-[13px] font-medium">Delete account</p>
             <p className="mt-0.5 text-[11.5px] leading-snug text-fg-muted">
-              Removes your profile, every resume, and your settings. There is no undo.
+              Closes your account and signs you out. Signing in again with this email starts you
+              over with a blank profile.
             </p>
           </div>
-          {confirmingDelete ? (
-            <div className="flex items-center gap-2">
-              <span className="hidden text-[12.5px] text-fg-muted sm:inline">You sure?</span>
-              <Button size="sm" variant="danger" onClick={deleteAccount} loading={deleting}>
-                Delete everything
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
-                Cancel
-              </Button>
-            </div>
-          ) : (
-            <Button size="sm" variant="danger" onClick={() => setConfirmingDelete(true)}>
-              <Trash2 size={13} />
-              Delete account
-            </Button>
-          )}
+          <Button
+            size="sm"
+            variant="danger"
+            className="w-full sm:w-auto"
+            onClick={() => setConfirmingDelete(true)}
+          >
+            <Trash2 size={13} />
+            Delete account
+          </Button>
         </div>
       </div>
+
+      {confirmingDelete && me && (
+        <DeleteAccountDialog
+          email={me.email}
+          deleting={deleting}
+          onConfirm={deleteAccount}
+          onClose={() => setConfirmingDelete(false)}
+        />
+      )}
     </section>
+  );
+}
+
+function DeleteAccountDialog({
+  email,
+  deleting,
+  onConfirm,
+  onClose,
+}: {
+  email: string;
+  deleting: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const [typed, setTyped] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const matches = typed.trim().toLowerCase() === email.toLowerCase();
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-black/45 px-4 py-6 sm:items-center"
+      onMouseDown={() => !deleting && onClose()}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Delete account"
+        className="w-full max-w-md rounded-[var(--radius-panel)] border border-line-strong bg-raised p-5 shadow-2xl"
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && !deleting) onClose();
+        }}
+      >
+        <p className="text-[14px] font-medium">Delete this account?</p>
+        <p className="mt-1.5 text-[12.5px] leading-relaxed text-fg-muted">
+          You will be signed out and this account will stop working. Signing in again with the same
+          email gives you a new, empty account.
+        </p>
+
+        <label htmlFor="confirm-email" className="mt-4 block text-[12px] text-fg-muted">
+          Type <span className="font-medium text-fg">{email}</span> to confirm
+        </label>
+        <input
+          id="confirm-email"
+          ref={inputRef}
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && matches && !deleting) onConfirm();
+          }}
+          autoComplete="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          disabled={deleting}
+          placeholder={email}
+          className="mt-2 h-9 w-full rounded-[var(--radius-ctl)] border border-line bg-surface px-3 text-[13.5px] outline-none focus:border-ink"
+        />
+
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button size="sm" variant="ghost" onClick={onClose} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={onConfirm}
+            loading={deleting}
+            disabled={!matches}
+          >
+            Delete account
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

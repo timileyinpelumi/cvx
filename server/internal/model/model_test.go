@@ -208,3 +208,122 @@ func TestFilenameTitleCases(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestNormalizeTailoredTrimsPastedRoleTitle(t *testing.T) {
+	tl := Tailored{
+		TargetRole: "Freelance website manager for Savvy Spender (running website, blog posting, SEO, ad-hoc backend changes, content updates, email outreach, newsletter editing, social media)",
+	}
+	NormalizeTailored(&tl)
+	if got := tl.TargetRole; got != "Freelance website manager for Savvy Spender" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestNormalizeTailoredClampsRoleSummary(t *testing.T) {
+	tl := Tailored{RoleSummary: strings.Repeat("word ", 60)}
+	NormalizeTailored(&tl)
+	if len(tl.RoleSummary) > maxRoleSummary {
+		t.Fatalf("role summary not clamped: %d chars", len(tl.RoleSummary))
+	}
+}
+
+func TestShapeIssuesReportsFloors(t *testing.T) {
+	p := Profile{
+		Skills: []string{"Go", "Python", "SQL", "Docker", "AWS", "Kafka"},
+		Items: []Item{
+			{ID: "item-0", Bullets: []Bullet{{ID: "item-0-b-0"}, {ID: "item-0-b-1"}}},
+			{ID: "item-1", Bullets: []Bullet{{ID: "item-1-b-0"}, {ID: "item-1-b-1"}}},
+			{ID: "item-2", Bullets: []Bullet{{ID: "item-2-b-0"}, {ID: "item-2-b-1"}}},
+		},
+	}
+	tl := Tailored{
+		Summary:        "Too short by far.",
+		SelectedSkills: []string{"Go"},
+		Sections: []TSection{{Items: []TItem{
+			{SourceID: "item-0", Title: "Engineer", Bullets: []TBullet{{}}},
+		}}},
+	}
+	issues := ShapeIssues(p, tl)
+	if len(issues) != 4 {
+		t.Fatalf("want summary, bullet, item-count and skill issues, got %d: %v", len(issues), issues)
+	}
+}
+
+// A sparse profile cannot be pushed past what it holds: asking for three
+// items and six skills when the profile has one of each only invites
+// invention, which the id guardrail would then reject.
+func TestShapeIssuesCapsFloorsToProfile(t *testing.T) {
+	p := Profile{
+		Skills: []string{"Go"},
+		Items:  []Item{{ID: "item-0", Bullets: []Bullet{{ID: "item-0-b-0"}}}},
+	}
+	tl := Tailored{
+		Summary:        strings.Repeat("word ", minSummaryWords),
+		SelectedSkills: []string{"Go"},
+		Sections: []TSection{{Items: []TItem{
+			{SourceID: "item-0", Title: "Engineer", Bullets: []TBullet{{}}},
+		}}},
+	}
+	if issues := ShapeIssues(p, tl); len(issues) != 0 {
+		t.Fatalf("want no issues for a profile this sparse, got %v", issues)
+	}
+}
+
+func TestNormalizeTailoredDropsStubItemsWhilePageHoldsUp(t *testing.T) {
+	item := func(bullets int) TItem {
+		it := TItem{Title: "T"}
+		for i := 0; i < bullets; i++ {
+			it.Bullets = append(it.Bullets, TBullet{})
+		}
+		return it
+	}
+	tl := Tailored{Sections: []TSection{{Items: []TItem{
+		item(3), item(1), item(2), item(2), item(1),
+	}}}}
+	NormalizeTailored(&tl)
+	for _, it := range tl.Sections[0].Items {
+		if len(it.Bullets) < minItemBullets {
+			t.Fatalf("stub item survived: %+v", tl.Sections[0].Items)
+		}
+	}
+	if got := len(tl.Sections[0].Items); got != 3 {
+		t.Fatalf("want 3 items kept, got %d", got)
+	}
+}
+
+// The narrator voice, exactly as it shipped: "Timileyin builds robust,
+// scalable systems... He architected end-to-end payment platforms..."
+func TestShapeIssuesRejectsNarratorVoice(t *testing.T) {
+	p := Profile{Name: "Timileyin Pelumi"}
+	cases := map[string]string{
+		"names the candidate": "Timileyin builds robust, scalable systems across fintech, blockchain, and AI domains, architecting payment platforms and designing layered protocols for teams that need both depth and speed in equal measure today.",
+		"third person":        "Full stack engineer who builds payment systems. He architected end-to-end crypto-to-fiat platforms and designed the layered protocol behind them, bringing deep system design and security expertise to every team he has worked with so far.",
+		"first person":        "I build robust, scalable systems across fintech and blockchain, and I architected end-to-end payment platforms and designed layered protocols for teams that needed both depth and delivery speed in equal measure over five years.",
+		"introduced":          "This candidate builds robust, scalable systems across fintech, blockchain, and AI domains, having architected payment platforms and designed layered protocols for teams that needed depth and delivery speed alike.",
+	}
+	for name, summary := range cases {
+		t.Run(name, func(t *testing.T) {
+			issues := ShapeIssues(p, Tailored{Summary: summary})
+			if len(issues) == 0 {
+				t.Fatalf("narrator voice accepted: %s", summary)
+			}
+		})
+	}
+}
+
+func TestShapeIssuesAcceptsImpliedFirstPerson(t *testing.T) {
+	p := Profile{Name: "Timileyin Pelumi"}
+	tl := Tailored{
+		Headline: "Full stack engineer specializing in payment infrastructure",
+		Summary: "Full stack engineer with five years building payment infrastructure in Go and Python, " +
+			"from crypto-to-fiat rails at ChainPal to the layered protocol behind Solana settlement. " +
+			"Works close to the money path, where correctness under load and clear failure handling matter " +
+			"more than throughput alone, and has taken services from first commit through production ownership. " +
+			"That is the same ground this architecture role covers today.",
+	}
+	for _, issue := range ShapeIssues(p, tl) {
+		if strings.Contains(issue, "pronoun") || strings.Contains(issue, "names the candidate") {
+			t.Fatalf("clean summary flagged: %s", issue)
+		}
+	}
+}

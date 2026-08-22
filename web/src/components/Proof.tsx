@@ -1,15 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronDown, Download, Eye, Mail } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Download, Eye, Mail } from "lucide-react";
 import { coverURL, pdfURL } from "@/lib/api";
 import { countBySeverity, cx, fullDate, plural } from "@/lib/format";
-import type { Gap } from "@/lib/types";
+import type { Coverage, Fit, Gap, Ungrounded } from "@/lib/types";
 import { Button, Eyebrow } from "./ui";
 
 export interface ProofData {
   id: string;
   targetRole?: string;
+  roleSummary?: string;
   filename: string;
   gaps: Gap[];
   whatChanged: string[];
@@ -17,6 +18,9 @@ export interface ProofData {
   coverFilename?: string;
   emailed?: boolean;
   createdAt?: string;
+  fit?: Fit;
+  coverage?: Coverage;
+  proseWarnings?: Ungrounded[];
 }
 
 export function Proof({ data }: { data: ProofData }) {
@@ -30,7 +34,10 @@ export function Proof({ data }: { data: ProofData }) {
         <h2 className="mt-1.5 font-display text-[19px] font-bold leading-tight tracking-[-0.02em]">
           {data.targetRole || "Your resume"}
         </h2>
-        <p className="num mt-1 truncate text-[12px] text-fg-muted" title={data.filename}>
+        {data.roleSummary && (
+          <p className="mt-1.5 text-[12.5px] leading-snug text-fg-muted">{data.roleSummary}</p>
+        )}
+        <p className="num mt-1 truncate text-[12px] text-fg-faint" title={data.filename}>
           {data.filename}
         </p>
 
@@ -77,6 +84,58 @@ export function Proof({ data }: { data: ProofData }) {
             className="h-[70vh] w-full rounded-[var(--radius-ctl)] border border-line bg-raised"
           />
         </div>
+      )}
+
+      {data.proseWarnings && data.proseWarnings.length > 0 && (
+        <div className="border-t border-line bg-missing-soft px-4 py-4 sm:px-6">
+          <p className="flex items-center gap-2 text-[13px] font-medium text-missing">
+            <AlertTriangle size={14} className="shrink-0" />
+            Check these lines before you send
+          </p>
+          <ul className="mt-2 space-y-2.5">
+            {data.proseWarnings.map((w, i) => (
+              <li key={i}>
+                <p className="text-[13px] leading-snug">{w.claim}</p>
+                <p className="mt-0.5 text-[12px] leading-relaxed text-fg-muted">
+                  In your {w.artifact}. {w.profileSays}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {data.fit && <FitRow fit={data.fit} />}
+
+      {data.coverage && data.coverage.total > 0 && (
+        <Section
+          title="What the job asked for"
+          count={data.coverage.total}
+          badge={
+            <span className="num text-[11.5px] text-fg-muted">
+              {data.coverage.covered} of {data.coverage.total} covered
+            </span>
+          }
+          defaultOpen={data.coverage.covered < data.coverage.total}
+          empty=""
+        >
+          <div className="flex flex-wrap gap-1.5">
+            {data.coverage.hits.map((hit) => (
+              <span
+                key={hit.keyword}
+                title={hit.covered ? `On your resume, in ${hit.where}` : "Not on your resume"}
+                className={cx(
+                  "num rounded-full px-2 py-0.5 text-[11.5px]",
+                  hit.covered
+                    ? "bg-good-soft text-good"
+                    : "bg-missing-soft text-missing",
+                )}
+              >
+                {hit.keyword}
+              </span>
+            ))}
+          </div>
+        </Section>
       )}
 
       <Section
@@ -137,6 +196,32 @@ export function Proof({ data }: { data: ProofData }) {
         </ul>
       </Section>
     </article>
+  );
+}
+
+const FIT_TONES: Record<Fit["band"], { dot: string; label: string }> = {
+  strong: { dot: "bg-good", label: "Strong fit" },
+  fair: { dot: "bg-weak", label: "Fair fit" },
+  stretch: { dot: "bg-missing", label: "A stretch" },
+};
+
+function FitRow({ fit }: { fit: Fit }) {
+  const tone = FIT_TONES[fit.band] ?? FIT_TONES.fair;
+  return (
+    <div className="border-t border-line px-4 py-4 sm:px-6">
+      <div className="flex items-baseline gap-2.5">
+        <span aria-hidden="true" className={cx("h-2 w-2 shrink-0 rounded-full", tone.dot)} />
+        <p className="text-[13.5px] font-medium">{tone.label}</p>
+        <p className="num text-[12px] text-fg-faint">{fit.score} out of 100</p>
+      </div>
+      <ul className="mt-1.5 space-y-1 pl-[18px]">
+        {fit.reasons.map((reason, i) => (
+          <li key={i} className="text-[12.5px] leading-relaxed text-fg-muted">
+            {reason}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

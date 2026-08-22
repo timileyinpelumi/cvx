@@ -51,7 +51,7 @@ const tailorJSONEmptyArrays = `{"targetRole":"Python Backend Engineer","headline
 	"bullets":[{"sourceBulletId":"item-0-b-0","text":"Built the engine in Python"}]}]}],
 	"gaps":[],"whatChanged":[]}`
 
-const coverJSON = `{"greeting":"Dear hiring team,","paragraphs":["I am applying for the Python Backend Engineer role. At Analytical Engines Co I built the core computation engine in Python, designing the service layer that carried every production workload and cutting batch processing time for the largest datasets.","That work maps directly onto what this role asks for. I wrote the first published algorithm for the engine, owned its correctness under load, and would bring the same care for measurable outcomes to your backend systems."],"closing":"Sincerely,"}`
+const coverJSON = `{"recruiterName":"","company":"","tone":"neutral","paragraphs":["I am applying for the Python Backend Engineer role. At Analytical Engines Co I built the core computation engine in Python, designing the service layer that carried every production workload and cutting batch processing time for the largest datasets.","That work maps directly onto what this role asks for. I wrote the first published algorithm for the engine, owned its correctness under load, and would bring the same care for measurable outcomes to your backend systems."],"closing":"Sincerely,"}`
 
 // extendJSON adds one new skill and one new item, so a happy-path test can
 // assert both itemCount and skillCount grow. "Rust" is deliberately not
@@ -76,17 +76,21 @@ func isExtendSchema(schema map[string]any) bool {
 }
 
 // isCoverLetterSchema reports whether schema is the ai package's cover
-// letter schema (shape-tested: its top-level properties include "greeting"),
-// as opposed to the tailor schema. fakeLLM uses this to route calls that
-// don't carry a PDF block (i.e. everything except Digitize) between the
-// tailor and cover-letter fixtures, since GenerateJSON's other parameters
-// don't otherwise distinguish the two calls.
+// letter schema (shape-tested: paragraphs, and no subject line, which is
+// what separates it from the recruiter email), as opposed to the tailor
+// schema. fakeLLM uses this to route calls that don't carry a PDF block
+// (i.e. everything except Digitize) between the tailor and cover-letter
+// fixtures, since GenerateJSON's other parameters don't otherwise
+// distinguish the two calls.
 func isCoverLetterSchema(schema map[string]any) bool {
 	props, ok := schema["properties"].(map[string]any)
 	if !ok {
 		return false
 	}
-	_, ok = props["greeting"]
+	if _, hasSubject := props["subject"]; hasSubject {
+		return false
+	}
+	_, ok = props["paragraphs"]
 	return ok
 }
 
@@ -1174,8 +1178,8 @@ func TestGenerateRecruiterEmail(t *testing.T) {
 		notified = true
 		return true, nil
 	}
-	s.RecruiterMail = func(to, subject string, paragraphs []string, closing string, name string, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error) {
-		gotTo, gotSubject = to, subject
+	s.RecruiterMail = func(to string, re model.RecruiterEmail, name string, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error) {
+		gotTo, gotSubject = to, re.Subject
 		return true, nil
 	}
 	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
@@ -1213,7 +1217,7 @@ func TestGenerateWithoutRecruiterFlagUsesNotification(t *testing.T) {
 		notified = true
 		return true, nil
 	}
-	s.RecruiterMail = func(to, subject string, paragraphs []string, closing string, name string, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error) {
+	s.RecruiterMail = func(to string, re model.RecruiterEmail, name string, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error) {
 		recruited = true
 		return true, nil
 	}
@@ -1634,5 +1638,70 @@ func TestDeleteAccount(t *testing.T) {
 	other.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/profile", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("other user's profile must survive, got %d", rec.Code)
+	}
+}
+
+func TestGenerationProvenanceTracesEveryBulletBackToTheProfile(t *testing.T) {
+	s, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBody("Python Backend Engineer"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("generate: %d %s", rec.Code, rec.Body)
+	}
+	var gen generateResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &gen); err != nil {
+		t.Fatal(err)
+	}
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/generations/"+gen.ID+"/provenance", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("provenance: %d %s", rec.Code, rec.Body)
+	}
+	var got map[string]provenanceEntry
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := got["item-0-b-0"]
+	if !ok {
+		t.Fatalf("cited bullet missing from provenance: %v", got)
+	}
+	if entry.Original == "" || entry.ItemTitle == "" {
+		t.Fatalf("provenance entry is empty: %+v", entry)
+	}
+	_ = s
+}
+
+// The follow-up flow is gated by the tracker, not by the user's patience.
+func TestFollowUpRefusesUntilTheApplicationIsSentAndOldEnough(t *testing.T) {
+	s, e := newTestServer(t)
+	e.ServeHTTP(httptest.NewRecorder(), uploadRequest(t, []byte("%PDF-fake")))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, generateRequestBody("Python Backend Engineer"))
+	var gen generateResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &gen); err != nil {
+		t.Fatal(err)
+	}
+
+	followUp := func() int {
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/generations/"+gen.ID+"/followup", nil))
+		return rec.Code
+	}
+
+	// Not sent at all.
+	if code := followUp(); code != http.StatusConflict {
+		t.Fatalf("want 409 for an application that was never sent, got %d", code)
+	}
+
+	// Sent just now: still too soon.
+	if _, err := s.Store.SetGenerationStatus(devUserID(t, s.Store), gen.ID, store.StatusSent); err != nil {
+		t.Fatal(err)
+	}
+	if code := followUp(); code != http.StatusConflict {
+		t.Fatalf("want 409 for an application sent today, got %d", code)
 	}
 }

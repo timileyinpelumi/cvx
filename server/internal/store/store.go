@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,11 +24,13 @@ CREATE TABLE IF NOT EXISTS generations (
   created_at TEXT NOT NULL, tailored_json TEXT NOT NULL, pdf BLOB NOT NULL,
   cover_pdf BLOB, cover_filename TEXT, role_fingerprint TEXT,
   pinned INTEGER NOT NULL DEFAULT 0,
-  status TEXT NOT NULL DEFAULT '', status_at TEXT
+  status TEXT NOT NULL DEFAULT '', status_at TEXT,
+  posting_json TEXT
 );
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT, provider TEXT NOT NULL, provider_id TEXT NOT NULL,
   email TEXT NOT NULL, name TEXT NOT NULL, created_at TEXT NOT NULL,
+  deleted_at TEXT,
   UNIQUE(provider, provider_id)
 );
 CREATE TABLE IF NOT EXISTS user_settings (
@@ -61,6 +64,7 @@ type User struct {
 type GenerationMeta struct {
 	ID             string      `json:"id"`
 	TargetRole     string      `json:"targetRole"`
+	RoleSummary    string      `json:"roleSummary"`
 	Filename       string      `json:"filename"`
 	CreatedAt      string      `json:"createdAt"`
 	Gaps           []model.Gap `json:"gaps"`
@@ -69,6 +73,13 @@ type GenerationMeta struct {
 	Pinned         bool        `json:"pinned"`
 	Status         string      `json:"status"`
 	StatusAt       string      `json:"statusAt"`
+
+	// Fit and Coverage are derived, not stored: both are pure functions of
+	// the tailored output and the parsed posting, so they are recomputed on
+	// read and can never drift from the resume they describe. Nil for
+	// generations saved before postings were parsed.
+	Fit      *model.Fit      `json:"fit,omitempty"`
+	Coverage *model.Coverage `json:"coverage,omitempty"`
 }
 
 // GapTrend is one requirement that has come up as a gap across two or more
@@ -175,6 +186,11 @@ func migrate(db *sql.DB) error {
 			return err
 		}
 	}
+	if !genCols["posting_json"] {
+		if _, err := db.Exec(`ALTER TABLE generations ADD COLUMN posting_json TEXT`); err != nil {
+			return err
+		}
+	}
 
 	settingsCols, err := tableColumns(db, "user_settings")
 	if err != nil {
@@ -192,6 +208,16 @@ func migrate(db *sql.DB) error {
 	}
 	if !settingsCols["recruiter_auto"] {
 		if _, err := db.Exec(`ALTER TABLE user_settings ADD COLUMN recruiter_auto INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+
+	userCols, err := tableColumns(db, "users")
+	if err != nil {
+		return err
+	}
+	if !userCols["deleted_at"] {
+		if _, err := db.Exec(`ALTER TABLE users ADD COLUMN deleted_at TEXT`); err != nil {
 			return err
 		}
 	}
@@ -249,27 +275,20 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// DeleteUser permanently removes the user and everything they own, in one
-// transaction. The LLM cache is left alone: it is keyed by request content,
-// not user.
-func (s *Store) DeleteUser(userID int64) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	for _, q := range []string{
-		`DELETE FROM generations WHERE user_id = ?`,
-		`DELETE FROM profile_history WHERE user_id = ?`,
-		`DELETE FROM profile WHERE user_id = ?`,
-		`DELETE FROM user_settings WHERE user_id = ?`,
-		`DELETE FROM users WHERE id = ?`,
-	} {
-		if _, err := tx.Exec(q, userID); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+// SoftDeleteUser tombstones the account row and leaves every row the user
+// owns untouched. The email and provider_id are prefixed so the
+// UNIQUE(provider, provider_id) key is freed: signing in again with the same
+// identity creates a fresh account instead of reopening this one. The
+// timestamp in the prefix keeps repeat deletes of the same identity unique.
+func (s *Store) SoftDeleteUser(userID int64) error {
+	now := time.Now().UTC()
+	prefix := "deleted_" + strconv.FormatInt(now.UnixNano(), 10) + "_"
+	_, err := s.db.Exec(
+		`UPDATE users SET email = ? || email, provider_id = ? || provider_id, deleted_at = ?
+		 WHERE id = ? AND deleted_at IS NULL`,
+		prefix, prefix, now.Format(time.RFC3339), userID,
+	)
+	return err
 }
 
 // llmCacheTTL bounds how long a cached LLM response is served; PruneLLMCache
@@ -489,6 +508,7 @@ func (s *Store) SaveGeneration(userID int64, t model.Tailored, pdf []byte, filen
 		return GenerationMeta{
 			ID:             id,
 			TargetRole:     t.TargetRole,
+			RoleSummary:    t.RoleSummary,
 			Filename:       filename,
 			CreatedAt:      createdAt,
 			Gaps:           model.NonNil(t.Gaps),
@@ -543,7 +563,8 @@ func (s *Store) SaveGeneration(userID int64, t model.Tailored, pdf []byte, filen
 
 func (s *Store) ListGenerations(userID int64) ([]GenerationMeta, error) {
 	rows, err := s.db.Query(
-		`SELECT id, target_role, filename, created_at, tailored_json, cover_filename, pinned, status, status_at FROM generations WHERE user_id = ? ORDER BY pinned DESC, created_at DESC, id DESC`,
+		`SELECT id, target_role, filename, created_at, tailored_json, cover_filename, pinned, status, status_at, posting_json
+		 FROM generations WHERE user_id = ? ORDER BY pinned DESC, created_at DESC, id DESC`,
 		userID,
 	)
 	if err != nil {
@@ -555,9 +576,9 @@ func (s *Store) ListGenerations(userID int64) ([]GenerationMeta, error) {
 	for rows.Next() {
 		var m GenerationMeta
 		var raw string
-		var coverFilename, statusAt sql.NullString
+		var coverFilename, statusAt, postingJSON sql.NullString
 		var pinned int
-		if err := rows.Scan(&m.ID, &m.TargetRole, &m.Filename, &m.CreatedAt, &raw, &coverFilename, &pinned, &m.Status, &statusAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.TargetRole, &m.Filename, &m.CreatedAt, &raw, &coverFilename, &pinned, &m.Status, &statusAt, &postingJSON); err != nil {
 			return nil, err
 		}
 		m.Pinned = pinned != 0
@@ -566,15 +587,59 @@ func (s *Store) ListGenerations(userID int64) ([]GenerationMeta, error) {
 		if err := json.Unmarshal([]byte(raw), &t); err != nil {
 			return nil, err
 		}
+		m.RoleSummary = t.RoleSummary
 		m.Gaps = model.NonNil(t.Gaps)
 		m.WhatChanged = model.NonNil(t.WhatChanged)
 		m.HasCoverLetter = coverFilename.Valid && coverFilename.String != ""
+		if postingJSON.Valid && postingJSON.String != "" {
+			var posting model.Posting
+			if err := json.Unmarshal([]byte(postingJSON.String), &posting); err == nil {
+				cov := model.CoverageOf(posting, t)
+				fit := model.FitOf(posting, t, cov)
+				m.Coverage, m.Fit = &cov, &fit
+			}
+		}
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// SavePosting attaches the parsed posting to a generation. Written after the
+// generation row rather than as part of it: a posting that fails to store
+// costs the keyword panel, not the resume.
+func (s *Store) SavePosting(userID int64, id string, posting model.Posting) error {
+	b, err := json.Marshal(posting)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(
+		`UPDATE generations SET posting_json = ? WHERE id = ? AND user_id = ?`,
+		string(b), id, userID,
+	)
+	return err
+}
+
+// GetPosting returns the parsed posting stored with a generation, or
+// (nil, nil) for a generation saved before postings were parsed.
+func (s *Store) GetPosting(userID int64, id string) (*model.Posting, error) {
+	var raw sql.NullString
+	err := s.db.QueryRow(
+		`SELECT posting_json FROM generations WHERE id = ? AND user_id = ?`, id, userID,
+	).Scan(&raw)
+	if err == sql.ErrNoRows || (err == nil && (!raw.Valid || raw.String == "")) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var p model.Posting
+	if err := json.Unmarshal([]byte(raw.String), &p); err != nil {
+		return nil, err
+	}
+	return &p, nil
 }
 
 // GetResumeStyle returns the user's saved resume style JSON, or (nil, nil)
@@ -681,7 +746,11 @@ func (s *Store) SaveEmailCopy(userID int64, on bool) error {
 
 // GenerationStatuses is the set SetGenerationStatus accepts; "" clears the
 // status.
-var GenerationStatuses = map[string]bool{"": true, "sent": true, "interviewing": true, "rejected": true, "offer": true}
+// StatusSent is the one status the follow-up flow keys off: an application
+// that was sent and has not moved.
+const StatusSent = "sent"
+
+var GenerationStatuses = map[string]bool{"": true, StatusSent: true, "interviewing": true, "rejected": true, "offer": true}
 
 // GetGenerationTailored returns the stored tailored content for one
 // generation owned by userID; ok=false when no such row.
@@ -924,7 +993,8 @@ func (s *Store) GapSummary(userID int64) ([]GapTrend, int, error) {
 func (s *Store) UpsertUser(provider, providerID, email, name string) (User, error) {
 	var existing User
 	err := s.db.QueryRow(
-		`SELECT id, provider, provider_id, email, name FROM users WHERE provider = ? AND provider_id = ?`,
+		`SELECT id, provider, provider_id, email, name FROM users
+		 WHERE provider = ? AND provider_id = ? AND deleted_at IS NULL`,
 		provider, providerID,
 	).Scan(&existing.ID, &existing.Provider, &existing.ProviderID, &existing.Email, &existing.Name)
 	if err == nil {
@@ -935,7 +1005,7 @@ func (s *Store) UpsertUser(provider, providerID, email, name string) (User, erro
 	}
 
 	var userCount int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&userCount); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE deleted_at IS NULL`).Scan(&userCount); err != nil {
 		return User{}, err
 	}
 	isFirstUser := userCount == 0
@@ -970,7 +1040,7 @@ func (s *Store) UpsertUser(provider, providerID, email, name string) (User, erro
 func (s *Store) GetUser(id int64) (*User, error) {
 	var u User
 	err := s.db.QueryRow(
-		`SELECT id, provider, provider_id, email, name FROM users WHERE id = ?`, id,
+		`SELECT id, provider, provider_id, email, name FROM users WHERE id = ? AND deleted_at IS NULL`, id,
 	).Scan(&u.ID, &u.Provider, &u.ProviderID, &u.Email, &u.Name)
 	if err == sql.ErrNoRows {
 		return nil, nil

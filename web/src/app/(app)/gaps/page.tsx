@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import { cx } from "@/lib/format";
 import type { GapTrend, GapsSummary } from "@/lib/types";
 import { Button, EmptyState, ErrorState, PageHeader, RowSkeleton } from "@/components/ui";
+import { useToast } from "@/components/Toast";
 
 export default function GapsPage() {
   const fetcher = useCallback(() => api.gaps(), []);
@@ -53,7 +54,7 @@ export default function GapsPage() {
 
           <ul className="divide-y divide-line">
             {trends.map((trend) => (
-              <TrendRow key={trend.requirement} trend={trend} />
+              <TrendRow key={trend.requirement} trend={trend} onAdded={reload} />
             ))}
           </ul>
         </>
@@ -62,7 +63,27 @@ export default function GapsPage() {
   );
 }
 
-function TrendRow({ trend }: { trend: GapTrend }) {
+function TrendRow({ trend, onAdded }: { trend: GapTrend; onAdded: () => void }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function add() {
+    setSaving(true);
+    try {
+      await api.extendProfile(note.trim(), trend.requirement);
+      toast("Added to your profile. It can show up on resumes now.", "success");
+      setOpen(false);
+      setNote("");
+      onAdded();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Couldn't add that", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <li className="px-5 py-4 transition-colors duration-[130ms] hover:bg-sunken sm:px-7">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -82,6 +103,39 @@ function TrendRow({ trend }: { trend: GapTrend }) {
         <p className="mt-1.5 max-w-[68ch] text-[12.5px] leading-relaxed text-fg-faint">
           {trend.lastEvidence}
         </p>
+      )}
+
+      {open ? (
+        <div className="mt-3 max-w-[68ch]">
+          <label htmlFor={`gap-${trend.requirement}`} className="text-[12.5px] text-fg-muted">
+            Where have you done this? Say what you built and where.
+          </label>
+          <textarea
+            id={`gap-${trend.requirement}`}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={3}
+            autoFocus
+            placeholder={`e.g. Ran ${trend.requirement} on the billing service at work for about a year.`}
+            className="mt-2 w-full rounded-[var(--radius-ctl)] border border-line bg-surface px-3 py-2 text-[13.5px] leading-relaxed outline-none focus:border-ink"
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <Button size="sm" variant="primary" onClick={add} loading={saving} disabled={!note.trim()}>
+              Add to profile
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="mt-2 text-[12.5px] font-medium text-ink transition-opacity duration-[130ms] hover:opacity-70"
+        >
+          I have done this
+        </button>
       )}
     </li>
   );

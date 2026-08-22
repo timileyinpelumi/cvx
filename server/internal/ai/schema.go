@@ -11,10 +11,10 @@ var profileSchema = map[string]any{
 		"isResume":        map[string]any{"type": "boolean"},
 		"notResumeReason": map[string]any{"type": "string"},
 		"name":            map[string]any{"type": "string"},
-		"email":    map[string]any{"type": "string"},
-		"phone":    map[string]any{"type": "string"},
-		"location": map[string]any{"type": "string"},
-		"summary":  map[string]any{"type": "string"},
+		"email":           map[string]any{"type": "string"},
+		"phone":           map[string]any{"type": "string"},
+		"location":        map[string]any{"type": "string"},
+		"summary":         map[string]any{"type": "string"},
 		"links": map[string]any{
 			"type": "array",
 			"items": map[string]any{
@@ -71,9 +71,10 @@ var profileSchema = map[string]any{
 var tailoredSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
-		"targetRole": map[string]any{"type": "string"},
-		"headline":   map[string]any{"type": "string"},
-		"summary":    map[string]any{"type": "string"},
+		"targetRole":  map[string]any{"type": "string"},
+		"roleSummary": map[string]any{"type": "string"},
+		"headline":    map[string]any{"type": "string"},
+		"summary":     map[string]any{"type": "string"},
 		"selectedSkills": map[string]any{
 			"type":  "array",
 			"items": map[string]any{"type": "string"},
@@ -133,7 +134,7 @@ var tailoredSchema = map[string]any{
 			"items": map[string]any{"type": "string"},
 		},
 	},
-	"required":             []string{"targetRole", "headline", "summary", "selectedSkills", "sections", "gaps", "whatChanged"},
+	"required":             []string{"targetRole", "roleSummary", "headline", "summary", "selectedSkills", "sections", "gaps", "whatChanged"},
 	"additionalProperties": false,
 }
 
@@ -207,14 +208,13 @@ var profileAdditionsSchema = map[string]any{
 var coverLetterSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
-		"greeting": map[string]any{"type": "string"},
 		"paragraphs": map[string]any{
 			"type":  "array",
 			"items": map[string]any{"type": "string"},
 		},
 		"closing": map[string]any{"type": "string"},
 	},
-	"required":             []string{"greeting", "paragraphs", "closing"},
+	"required":             []string{"paragraphs", "closing"},
 	"additionalProperties": false,
 }
 

@@ -5,6 +5,8 @@ import type {
   GenerationMeta,
   Me,
   ProfileSummary,
+  Provenance,
+  RecruiterEmail,
   Settings,
   Tailored,
 } from "./types";
@@ -98,6 +100,18 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(t),
     }),
+
+  provenance: (id: string) => request<Provenance>(`/api/generations/${id}/provenance`),
+
+  followUp: (id: string) =>
+    request<RecruiterEmail>(`/api/generations/${id}/followup`, { method: "POST" }),
+
+  rewriteBullet: (id: string, bulletId: string, current: string, instruction = "") =>
+    request<{ text: string }>(`/api/generations/${id}/bullet`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bulletId, current, instruction }),
+    }).then((r) => r.text),
 
   profileHistory: () =>
     request<{ count: number; lastSavedAt: string }>("/api/profile/history"),

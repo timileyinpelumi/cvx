@@ -20,6 +20,15 @@ export function relativeAge(iso: string): string {
   return new Date(then).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+/** Whole days since an ISO stamp, or null when there is no usable stamp.
+ *  Used to decide when a quiet application is old enough to nudge. */
+export function daysAgo(iso: string): number | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+  return Math.floor((Date.now() - then) / 86400000);
+}
+
 export function fullDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "unknown";

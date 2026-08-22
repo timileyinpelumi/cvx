@@ -11,6 +11,7 @@ import { STATUS_TONES, STATUSES, type GenerationMeta, type Tailored } from "@/li
 import { useToast } from "@/components/Toast";
 import { Proof } from "@/components/Proof";
 import { TailorEditor } from "@/components/TailorEditor";
+import { FollowUp } from "@/components/FollowUp";
 import { Button, EmptyState, ErrorState, Eyebrow, PageHeader, Skeleton } from "@/components/ui";
 
 export default function GenerationDetailPage() {
@@ -174,15 +175,20 @@ export default function GenerationDetailPage() {
               </div>
             </div>
 
+            <FollowUp id={row.id} status={row.status} statusAt={row.statusAt} />
+
             <Proof
               data={{
                 id: row.id,
                 targetRole: row.targetRole,
+                roleSummary: row.roleSummary,
                 filename: row.filename,
                 gaps: row.gaps,
                 whatChanged: row.whatChanged,
                 hasCoverLetter: row.hasCoverLetter,
                 createdAt: row.createdAt,
+                fit: row.fit,
+                coverage: row.coverage,
               }}
             />
           </>

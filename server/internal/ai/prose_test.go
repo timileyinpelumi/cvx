@@ -42,7 +42,9 @@ func TestCheckCoverLetterCatchesViolations(t *testing.T) {
 		}, "words"},
 		{"long closing", func(cl *model.CoverLetter) { cl.Closing = "With my very warmest regards to all," }, "sign-off"},
 		{"no comma", func(cl *model.CoverLetter) { cl.Closing = "Sincerely" }, "comma"},
-		{"repeated paragraph", func(cl *model.CoverLetter) { cl.Paragraphs = append(cl.Paragraphs[:1], cl.Paragraphs[0], cl.Paragraphs[0]) }, "repeated"},
+		{"repeated paragraph", func(cl *model.CoverLetter) {
+			cl.Paragraphs = append(cl.Paragraphs[:1], cl.Paragraphs[0], cl.Paragraphs[0])
+		}, "repeated"},
 	}
 	for _, tc := range cases {
 		cl := goodLetter()
@@ -60,7 +62,8 @@ func TestCheckCoverLetterCatchesViolations(t *testing.T) {
 
 func goodEmail() model.RecruiterEmail {
 	return model.RecruiterEmail{
-		Subject: "Application for Backend Engineer",
+		Subject:  "Application for Backend Engineer",
+		Greeting: "Hello HR,",
 		Paragraphs: []string{
 			"I am applying for the Backend Engineer role. At Analytical Engines Co I built the core analytical engine in Go and wrote its first published algorithm. My resume and the details are attached.",
 		},
@@ -131,7 +134,7 @@ func TestCoverLetterRetriesOnceThenPasses(t *testing.T) {
 	p := digitizedSample()
 	q := &queuedLLM{outs: []string{badLetterJSON, goodLetterJSON()}}
 
-	cl, err := CoverLetter(context.Background(), q, p, "Backend Engineer")
+	cl, err := CoverLetter(context.Background(), q, p, testPosting("Backend Engineer"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,11 +158,36 @@ func TestCoverLetterFailsAfterSecondBadDraft(t *testing.T) {
 	p := digitizedSample()
 	q := &queuedLLM{outs: []string{badLetterJSON}}
 
-	_, err := CoverLetter(context.Background(), q, p, "Backend Engineer")
+	_, err := CoverLetter(context.Background(), q, p, testPosting("Backend Engineer"))
 	if err == nil || !strings.Contains(err.Error(), "quality checks") {
 		t.Fatalf("want quality-check error, got %v", err)
 	}
 	if q.calls != 2 {
 		t.Fatalf("want exactly 2 calls (one retry, never more), got %d", q.calls)
+	}
+}
+
+func TestCheckRecruiterEmailCatchesGreetingProblems(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*model.RecruiterEmail)
+		want   string
+	}{
+		{"no greeting", func(re *model.RecruiterEmail) { re.Greeting = "" }, "greeting does not match"},
+		{"wrong greeting shape", func(re *model.RecruiterEmail) { re.Greeting = "Yo team" }, "greeting does not match"},
+		{"greeting in paragraph", func(re *model.RecruiterEmail) {
+			re.Paragraphs = []string{"Hi there, I am applying for the Backend Engineer role. I built the engine in Go. It is attached."}
+		}, "opens with its own greeting"},
+		{"off-menu closing", func(re *model.RecruiterEmail) { re.Closing = "Yours faithfully," }, "not one of the sign-offs"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			re := goodEmail()
+			c.mutate(&re)
+			v := checkRecruiterEmail(re, "Ada Lovelace")
+			if !strings.Contains(strings.Join(v, "; "), c.want) {
+				t.Fatalf("want a violation mentioning %q, got %v", c.want, v)
+			}
+		})
 	}
 }

@@ -2,6 +2,7 @@ package pdfgen
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/go-pdf/fpdf"
@@ -252,5 +253,73 @@ func TestTightenedReducesSpacing(t *testing.T) {
 	tight := tightened(cfg)
 	if tight.leading >= cfg.leading || tight.gapSection >= cfg.gapSection {
 		t.Fatalf("tightened did not reduce spacing: %+v vs %+v", tight, cfg)
+	}
+}
+
+// TestContactLineHoldsIdentitiesOnly is the regression guard for the resume
+// whose contact row read "hello@… · Personal Website · ChainPal · FUTA ·
+// TweetStream · SAW Protocol Repo · Spawn App · PromptSifter Gist" and ran
+// off the right edge of the page.
+func TestContactLineHoldsIdentitiesOnly(t *testing.T) {
+	p, _ := fixture()
+	p.Links = []model.Link{
+		{Label: "ChainPal", URL: "https://github.com/ada/chainpal"},
+		{Label: "FUTA", URL: "https://futa.edu.ng/alumni/ada"},
+		{Label: "Personal Website", URL: "https://ada.dev"},
+		{Label: "TweetStream", URL: "https://tweetstream.vercel.app"},
+		{Label: "GitHub", URL: "https://github.com/ada"},
+		{Label: "LinkedIn", URL: "https://linkedin.com/in/ada"},
+	}
+
+	got := contactLine(p)
+	for _, project := range []string{"ChainPal", "FUTA", "TweetStream", "chainpal", "vercel"} {
+		if strings.Contains(got, project) {
+			t.Errorf("project link %q is in the contact row: %s", project, got)
+		}
+	}
+	for _, identity := range []string{"ada@example.com", "github.com/ada", "linkedin.com/in/ada", "ada.dev"} {
+		if !strings.Contains(got, identity) {
+			t.Errorf("missing %q from the contact row: %s", identity, got)
+		}
+	}
+}
+
+// TestHeaderLinesFitTheTextBlock measures the header's two single-line rows
+// against the usable width at every theme and density. Both are drawn with
+// MultiCell, so an over-wide line wraps instead of bleeding past the margin —
+// this asserts the capped contact row does not even need the wrap.
+func TestHeaderLinesFitTheTextBlock(t *testing.T) {
+	p, ta := fixture()
+	p.Email = "timileyin.pelumi.oluwaseun@example.com"
+	p.Phone = "+234 800 000 0000"
+	p.Location = "Lagos, Nigeria"
+	p.Links = []model.Link{
+		{Label: "GitHub", URL: "https://github.com/timileyin"},
+		{Label: "LinkedIn", URL: "https://linkedin.com/in/timileyin-pelumi"},
+		{Label: "Personal Website", URL: "https://timileyin.dev"},
+		{Label: "ChainPal", URL: "https://github.com/timileyin/chainpal"},
+		{Label: "SAW Protocol Repo", URL: "https://github.com/timileyin/saw"},
+	}
+
+	for _, theme := range []string{"classic", "modern", "compact"} {
+		for _, density := range []string{"normal", "tight"} {
+			style := Style{Theme: theme, Accent: "#2244D9", Density: density}
+			cfg := resolveTheme(style)
+
+			pdf := fpdf.New("P", "mm", "A4", "")
+			pdf.SetMargins(cfg.marginSide, cfg.marginTop, cfg.marginSide)
+			pdf.AddUTF8FontFromBytes(fontFamily, "", regularFont)
+			pdf.AddUTF8FontFromBytes(serifFamily, "", serifRegularFont)
+			pdf.AddPage()
+			w := usableWidth(pdf)
+
+			if got := pdf.GetStringWidth(fittedContactLine(pdf, cfg, w, p, false, false)); got > w {
+				t.Errorf("%s/%s: contact row is %.1fmm wide, text block is %.1fmm", theme, density, got, w)
+			}
+			pdf.SetFont(cfg.bodyFamily, "", cfg.headlinePt)
+			if got := pdf.GetStringWidth(ta.Headline); got > w {
+				t.Errorf("%s/%s: headline is %.1fmm wide, text block is %.1fmm", theme, density, got, w)
+			}
+		}
 	}
 }

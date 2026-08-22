@@ -11,7 +11,7 @@ func TestCoverLetterSchemaRequiredFields(t *testing.T) {
 	if !ok {
 		t.Fatalf("required is not []string: %v", coverLetterSchema["required"])
 	}
-	want := []string{"greeting", "paragraphs", "closing"}
+	want := []string{"paragraphs", "closing"}
 	if len(req) != len(want) {
 		t.Fatalf("required = %v, want %v", req, want)
 	}
@@ -38,7 +38,7 @@ func TestCoverLetterValid(t *testing.T) {
 	p := digitizedSample()
 	f := &fakeLLM{out: `{"greeting":"Dear hiring team,","paragraphs":["I am applying for the Python Backend Engineer role. At Analytical Engines Co I built the core computation engine in Python, designing the service layer that carried every production workload and cutting batch processing time for the largest datasets.","That work maps directly onto what this role asks for. I wrote the first published algorithm for the engine, owned its correctness under load, and would bring the same care for measurable outcomes to your backend systems."],"closing":"Sincerely,"}`}
 
-	cl, err := CoverLetter(context.Background(), f, p, "Python Backend Engineer")
+	cl, err := CoverLetter(context.Background(), f, p, testPosting("Python Backend Engineer"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestCoverLetterCallShape(t *testing.T) {
 	p := digitizedSample()
 	f := &fakeLLM{out: `{"greeting":"Dear hiring team,","paragraphs":["I am applying for the Python Backend Engineer role. At Analytical Engines Co I built the core computation engine in Python, designing the service layer that carried every production workload and cutting batch processing time for the largest datasets.","That work maps directly onto what this role asks for. I wrote the first published algorithm for the engine, owned its correctness under load, and would bring the same care for measurable outcomes to your backend systems."],"closing":"Sincerely,"}`}
 
-	if _, err := CoverLetter(context.Background(), f, p, "Python Backend Engineer"); err != nil {
+	if _, err := CoverLetter(context.Background(), f, p, testPosting("Python Backend Engineer")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -69,8 +69,11 @@ func TestCoverLetterCallShape(t *testing.T) {
 		}
 	}
 
-	if len(f.blocks) != 2 {
-		t.Fatalf("want 2 blocks (profile JSON + role), got %d", len(f.blocks))
+	if len(f.blocks) != 4 {
+		t.Fatalf("want 4 blocks (profile JSON + structured posting + raw posting + angle), got %d", len(f.blocks))
+	}
+	if !strings.Contains(f.blocks[3].Text, "Angle for this draft") {
+		t.Fatalf("expected the per-draft angle in the last block, got %q", f.blocks[3].Text)
 	}
 	if !strings.Contains(f.blocks[0].Text, "Ada") {
 		t.Fatalf("expected profile JSON in first block, got %q", f.blocks[0].Text)

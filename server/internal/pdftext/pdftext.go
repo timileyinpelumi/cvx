@@ -1,4 +1,8 @@
-package ai
+// Package pdftext turns a PDF back into plain text. It is used in both
+// directions: to read an uploaded resume for providers that cannot take a
+// PDF part, and to read cvx's own output back to check what actually landed
+// on the page.
+package pdftext
 
 import (
 	"bytes"
@@ -35,4 +39,14 @@ func ExtractText(pdfBytes []byte) (string, error) {
 		return "", fmt.Errorf("no extractable text in PDF (is it scanned?)")
 	}
 	return text, nil
+}
+
+// PageCount reports how many pages a PDF has, or 0 when it cannot be read.
+// Used to hold generated resumes to the one-page standard.
+func PageCount(pdfBytes []byte) int {
+	r, err := pdf.NewReader(bytes.NewReader(pdfBytes), int64(len(pdfBytes)))
+	if err != nil {
+		return 0
+	}
+	return r.NumPage()
 }

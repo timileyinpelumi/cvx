@@ -45,6 +45,16 @@ type CoverRubric struct {
 	Factuality  RubricScore `json:"factuality"`
 }
 
+// EmailRubric scores the forwardable application email — the artifact that
+// actually reaches a recruiter, and until now the only generated artifact
+// with no eval coverage at all.
+type EmailRubric struct {
+	Specificity RubricScore `json:"specificity"`
+	Opening     RubricScore `json:"opening"`
+	Subject     RubricScore `json:"subject"`
+	Factuality  RubricScore `json:"factuality"`
+}
+
 // FixtureResult is one fixture's full eval outcome. Resume/Cover are nil
 // when the corresponding judge call never ran (e.g. Error set because
 // ai.Tailor itself failed, so there was nothing valid to judge).
@@ -63,6 +73,8 @@ type FixtureResult struct {
 	Resume          *ResumeRubric `json:"resume,omitempty"`
 	Cover           *CoverRubric  `json:"cover,omitempty"`
 	CoverError      string        `json:"coverError,omitempty"`
+	Email           *EmailRubric  `json:"email,omitempty"`
+	EmailError      string        `json:"emailError,omitempty"`
 }
 
 // hasFailingGuardrailCheck reports whether f's deterministic checks include
@@ -135,6 +147,7 @@ type Report struct {
 // by both aggregate() (for stable map iteration) and Render().
 var resumeDimensionOrder = []string{"selection", "vocabulary", "bulletStrength", "honesty", "gapQuality", "headlineSummary"}
 var coverDimensionOrder = []string{"specificity", "voice", "factuality"}
+var emailDimensionOrder = []string{"emailSpecificity", "emailOpening", "emailSubject", "emailFactuality"}
 
 func aggregate(fixtures []FixtureResult) Aggregate {
 	sums := map[string]float64{}
@@ -179,6 +192,15 @@ func aggregate(fixtures []FixtureResult) Aggregate {
 			addScore("specificity", f.Cover.Specificity)
 			addScore("voice", f.Cover.Voice)
 			addScore("factuality", f.Cover.Factuality)
+		}
+		// The email's dimensions are namespaced: two of them share a name
+		// with the cover letter's, and averaging an email's specificity into
+		// a letter's would hide a regression in either.
+		if f.Email != nil {
+			addScore("emailSpecificity", f.Email.Specificity)
+			addScore("emailOpening", f.Email.Opening)
+			addScore("emailSubject", f.Email.Subject)
+			addScore("emailFactuality", f.Email.Factuality)
 		}
 	}
 
@@ -229,7 +251,7 @@ func (r Report) Render(w io.Writer) error {
 	for _, d := range resumeDimensionOrder {
 		header = append(header, strings.ToUpper(d))
 	}
-	header = append(header, "COVER_AVG", "ERROR")
+	header = append(header, "COVER_AVG", "EMAIL_AVG", "ERROR")
 	fmt.Fprintln(tw, strings.Join(header, "\t"))
 
 	for _, f := range r.Fixtures {
@@ -277,9 +299,19 @@ func (r Report) Render(w io.Writer) error {
 			row = append(row, "-")
 		}
 
+		if f.Email != nil {
+			avg := float64(f.Email.Specificity.Score+f.Email.Opening.Score+f.Email.Subject.Score+f.Email.Factuality.Score) / 4
+			row = append(row, fmt.Sprintf("%.1f", avg))
+		} else {
+			row = append(row, "-")
+		}
+
 		errStr := f.Error
 		if errStr == "" {
 			errStr = f.CoverError
+		}
+		if errStr == "" {
+			errStr = f.EmailError
 		}
 		row = append(row, errStr)
 
@@ -288,7 +320,9 @@ func (r Report) Render(w io.Writer) error {
 
 	fmt.Fprintln(tw)
 	fmt.Fprintf(tw, "deterministic pass rate\t%.1f%%\n", r.Aggregate.DeterministicPassRate*100)
-	for _, d := range append(append([]string{}, resumeDimensionOrder...), coverDimensionOrder...) {
+	allDimensions := append(append([]string{}, resumeDimensionOrder...), coverDimensionOrder...)
+	allDimensions = append(allDimensions, emailDimensionOrder...)
+	for _, d := range allDimensions {
 		if m, ok := r.Aggregate.MeanByDimension[d]; ok {
 			fmt.Fprintf(tw, "%s\t%.2f\t(n=%d)\n", d, m, r.Aggregate.ScoredFixtures[d])
 		}

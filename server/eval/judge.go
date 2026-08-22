@@ -75,6 +75,31 @@ badly, 10 = excellent), with one concise one-line rationale per dimension:
 
 Return only the structured scores; no commentary outside the schema.`
 
+const judgeRecruiterEmailSystemPrompt = `You are a strict, skeptical judge of application emails. You will be given a
+candidate's full profile JSON (the only source of truth about what they have
+actually done), a job description, and the email generated from that profile
+for that job.
+
+This is the email a candidate sends a recruiter with their resume attached,
+not a cover letter. Score it on each dimension, 0-10 (0 = fails badly, 10 =
+excellent), with one concise one-line rationale per dimension:
+
+- specificity: does it carry concrete, verifiable facts from the profile
+  (named systems, technologies, numbers) tied to what the role asks for,
+  rather than filler that would read the same for any applicant?
+- opening: does the first sentence say plainly what the email is — that the
+  candidate is applying, for which role, at which company when the posting
+  names one — before anything else? An email that opens mid-pitch, or that
+  repeats the greeting, scores low.
+- subject: does the subject line name the role and carry one real
+  differentiator, stay under 80 characters, and avoid a bare field of study
+  ("Application for computer engineering")?
+- factuality: cross-check every claim against the profile JSON. Any
+  employer, metric, date, or accomplishment not traceable to the profile
+  must lower this score sharply.
+
+Return only the structured scores; no commentary outside the schema.`
+
 var rubricScoreSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
@@ -107,6 +132,18 @@ var coverRubricSchema = map[string]any{
 		"factuality":  rubricScoreSchema,
 	},
 	"required":             []string{"specificity", "voice", "factuality"},
+	"additionalProperties": false,
+}
+
+var emailRubricSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"specificity": rubricScoreSchema,
+		"opening":     rubricScoreSchema,
+		"subject":     rubricScoreSchema,
+		"factuality":  rubricScoreSchema,
+	},
+	"required":             []string{"specificity", "opening", "subject", "factuality"},
 	"additionalProperties": false,
 }
 
@@ -168,6 +205,36 @@ func JudgeCoverLetter(ctx context.Context, judge ai.LLM, p model.Profile, jdText
 	var rubric CoverRubric
 	if err := json.Unmarshal(raw, &rubric); err != nil {
 		return CoverRubric{}, fmt.Errorf("eval: judge cover letter: unmarshal response: %w", err)
+	}
+	return rubric, nil
+}
+
+// JudgeRecruiterEmail scores an application email against the same standard
+// the pipeline promises, given the profile and JD text it was written from.
+func JudgeRecruiterEmail(ctx context.Context, judge ai.LLM, p model.Profile, jdText string, re model.RecruiterEmail) (EmailRubric, error) {
+	profileJSON, err := json.Marshal(p)
+	if err != nil {
+		return EmailRubric{}, fmt.Errorf("eval: judge email: marshal profile: %w", err)
+	}
+	emailJSON, err := json.Marshal(re)
+	if err != nil {
+		return EmailRubric{}, fmt.Errorf("eval: judge email: marshal email: %w", err)
+	}
+
+	blocks := []ai.ContentBlock{
+		{Text: fmt.Sprintf("Candidate profile JSON (ground truth):\n%s", profileJSON)},
+		{Text: fmt.Sprintf("Job description:\n%s", jdText)},
+		{Text: fmt.Sprintf("Application email JSON to judge:\n%s", emailJSON)},
+	}
+
+	raw, err := judge.GenerateJSON(ctx, judgeRecruiterEmailSystemPrompt, blocks, emailRubricSchema)
+	if err != nil {
+		return EmailRubric{}, fmt.Errorf("eval: judge email: %w", err)
+	}
+
+	var rubric EmailRubric
+	if err := json.Unmarshal(raw, &rubric); err != nil {
+		return EmailRubric{}, fmt.Errorf("eval: judge email: unmarshal response: %w", err)
 	}
 	return rubric, nil
 }

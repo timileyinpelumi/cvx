@@ -22,6 +22,11 @@ var proseCliches = []string{
 
 var greetingShape = regexp.MustCompile(`^Dear .+,$`)
 
+// The recruiter email opens with a composed greeting, never a model-authored
+// one; the openers are the ones model.Greeting can produce for an email.
+var emailGreetingShape = regexp.MustCompile(`^(Hello|Hi|Dear) [^,]{1,60},$`)
+var strayGreeting = regexp.MustCompile(`(?i)^(hi|hello|hey|dear|greetings|good (morning|afternoon|day))\b[^.]{0,40}[,:]`)
+
 // checkProseText returns the shared per-text violations: em/en dashes,
 // exclamation marks, placeholder brackets, and cliché phrases.
 func checkProseText(label, s string) []string {
@@ -65,6 +70,9 @@ func checkCoverLetter(cl model.CoverLetter) []string {
 	if !greetingShape.MatchString(strings.TrimSpace(cl.Greeting)) {
 		v = append(v, `greeting does not match the "Dear ...," shape`)
 	}
+	if len(cl.Paragraphs) > 0 && strayGreeting.MatchString(strings.TrimSpace(cl.Paragraphs[0])) {
+		v = append(v, "paragraph 1 opens with its own greeting; the letter already has one")
+	}
 	if n := len(cl.Paragraphs); n < 2 || n > 3 {
 		v = append(v, fmt.Sprintf("letter has %d paragraphs, want 2 or 3", n))
 	}
@@ -89,6 +97,9 @@ func checkCoverLetter(cl model.CoverLetter) []string {
 	}
 
 	v = append(v, checkClosing(cl.Closing)...)
+	if !closingAllowed(cl.Closing, true) {
+		v = append(v, fmt.Sprintf("closing %q is not one of the sign-offs this pipeline uses", strings.TrimSpace(cl.Closing)))
+	}
 	v = append(v, checkProseText("greeting", cl.Greeting)...)
 	v = append(v, checkProseText("closing", cl.Closing)...)
 	return v
@@ -104,8 +115,14 @@ func checkRecruiterEmail(re model.RecruiterEmail, candidateName string) []string
 	if len(subject) > 80 {
 		v = append(v, "subject is over 80 characters")
 	}
+	if !emailGreetingShape.MatchString(strings.TrimSpace(re.Greeting)) {
+		v = append(v, `greeting does not match the "Hello ...," / "Hi ...," / "Dear ...," shape`)
+	}
 	if n := len(re.Paragraphs); n < 1 || n > 2 {
 		v = append(v, fmt.Sprintf("email has %d paragraphs, want 1 or 2", n))
+	}
+	if len(re.Paragraphs) > 0 && strayGreeting.MatchString(strings.TrimSpace(re.Paragraphs[0])) {
+		v = append(v, "paragraph 1 opens with its own greeting; the email already has one")
 	}
 
 	sentences := 0
@@ -124,11 +141,39 @@ func checkRecruiterEmail(re model.RecruiterEmail, candidateName string) []string
 	}
 
 	v = append(v, checkClosing(re.Closing)...)
+	if !closingAllowed(re.Closing, false) {
+		v = append(v, fmt.Sprintf("closing %q is not one of the sign-offs this pipeline uses", strings.TrimSpace(re.Closing)))
+	}
 	if candidateName != "" && strings.Contains(strings.ToLower(re.Closing), strings.ToLower(candidateName)) {
 		v = append(v, "closing contains the candidate's name; the sender appends it")
 	}
+	v = append(v, checkProseText("greeting", re.Greeting)...)
 	v = append(v, checkProseText("subject", re.Subject)...)
 	v = append(v, checkProseText("closing", re.Closing)...)
+	return v
+}
+
+// checkFollowUp is checkRecruiterEmail with the follow-up's tighter shape: a
+// single short paragraph, because a long nudge is a worse nudge.
+func checkFollowUp(re model.RecruiterEmail, candidateName string) []string {
+	var v []string
+	for _, issue := range checkRecruiterEmail(re, candidateName) {
+		// The paragraph and sentence counts differ; every other rule holds.
+		if strings.Contains(issue, "paragraphs, want") || strings.Contains(issue, "sentences, want") {
+			continue
+		}
+		v = append(v, issue)
+	}
+	if n := len(re.Paragraphs); n != 1 {
+		v = append(v, fmt.Sprintf("follow-up has %d paragraphs, want exactly 1", n))
+	}
+	sentences := 0
+	for _, p := range re.Paragraphs {
+		sentences += countSentences(p)
+	}
+	if sentences < 2 || sentences > 4 {
+		v = append(v, fmt.Sprintf("follow-up has %d sentences, want 2 to 4", sentences))
+	}
 	return v
 }
 

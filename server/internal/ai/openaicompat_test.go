@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -8,6 +9,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/go-pdf/fpdf"
 )
 
 func decodeBody(t *testing.T, r *http.Request) map[string]any {
@@ -266,4 +269,19 @@ func TestOpenAICompatMaxTokensFieldModernSendsMaxCompletionTokens(t *testing.T) 
 	if _, present := body["max_tokens"]; present {
 		t.Fatalf("want no max_tokens field, got %v", body["max_tokens"])
 	}
+}
+
+// makeTestPDF builds a one-line PDF so a test can exercise the PDF-block
+// path without a fixture file.
+func makeTestPDF(t *testing.T, text string) []byte {
+	t.Helper()
+	pdf := fpdf.New("P", "mm", "A4", "")
+	pdf.AddPage()
+	pdf.SetFont("Arial", "", 16)
+	pdf.Cell(40, 10, text)
+	var buf bytes.Buffer
+	if err := pdf.Output(&buf); err != nil {
+		t.Fatalf("generate test pdf: %v", err)
+	}
+	return buf.Bytes()
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"cvx/internal/model"
@@ -77,7 +78,10 @@ Hard rules:
 - Every item and bullet you output MUST cite the exact "sourceId" /
   "sourceBulletId" of the profile item/bullet it comes from. Do not fabricate
   ids.
-- Select at most 5 items total, and 2-4 bullets per item.
+- Select 3 to 5 items total, and 2 to 4 bullets per item. Never output an
+  item with a single bullet: give it a second one from the profile or leave
+  the item out.
+- Select 6 to 14 skills.
 - "selectedSkills" must contain only strings copied verbatim from the
   profile's top-level "skills" array — character for character, no additions
   and no reworded variants. A technology that appears in a bullet's text, or
@@ -87,6 +91,11 @@ Hard rules:
 - Be honest about gaps: list requirements from the role that the profile does
   not clearly support, each with severity "missing" (not present at all) or
   "weak" (present but thin). Name each requirement in the role's own words.
+- The headline and summary are written in implied first person, the resume
+  standard: no pronouns at all. Never "I", "my", "he", "she", "his", or
+  "her", and never the candidate's own name. "Backend engineer who builds
+  payment systems in Go", not "Timileyin builds payment systems" and not "I
+  build payment systems". Open on the role, not on the person.
 - The headline and summary are held to the same evidence standard as the
   bullets, and are the easiest place to over-claim. State only what the
   profile's items actually show: do not claim a domain, specialism, seniority,
@@ -98,7 +107,17 @@ Hard rules:
   not clearly supported, omit the year count entirely. Make them the
   bridge instead — the candidate's real strength, described in the terms this
   role uses, and the concrete transferable evidence for its most central
-  requirement. Keep the summary under 60 words.
+  requirement. The summary is 55 to 75 words: three or four sentences
+  covering what the candidate does, the evidence that matters most for THIS
+  role, and the bridge to what the role asks for. Count the words before you
+  answer; a two-sentence summary is under the standard and will be rejected.
+- "targetRole" is a plain job title, not the pasted heading: the role and, if
+  the posting names one, the company ("Website Manager at Savvy Spender").
+  Under 60 characters, no duty lists, no parentheses, no seniority padding.
+- "roleSummary" is one sentence saying what the role actually covers, in the
+  posting's own words ("Runs the website end to end: blog posts, SEO, backend
+  changes, and email outreach."). Under 25 words, and it never repeats the
+  title verbatim.
 - "whatChanged" must list 2-4 bullets summarizing what you changed and why.
 - The result must fit on one page: be concise.`
 
@@ -136,21 +155,21 @@ func (o TailorOptions) instructions() string {
 // Tailor selects, reorders, and rephrases profile content for roleInput,
 // citing exact profile ids. model.ValidateTailored rejects fabricated ids
 // before the result is returned.
-func Tailor(ctx context.Context, llm LLM, p model.Profile, roleInput string) (model.Tailored, error) {
-	return TailorWithOptions(ctx, llm, p, roleInput, TailorOptions{})
+func Tailor(ctx context.Context, llm LLM, p model.Profile, posting model.Posting) (model.Tailored, error) {
+	return TailorWithOptions(ctx, llm, p, posting, TailorOptions{})
 }
 
 // TailorWithOptions is Tailor with the user's writing knobs applied.
-func TailorWithOptions(ctx context.Context, llm LLM, p model.Profile, roleInput string, opts TailorOptions) (model.Tailored, error) {
+func TailorWithOptions(ctx context.Context, llm LLM, p model.Profile, posting model.Posting, opts TailorOptions) (model.Tailored, error) {
 	profileJSON, err := json.Marshal(p)
 	if err != nil {
 		return model.Tailored{}, fmt.Errorf("tailor: marshal profile: %w", err)
 	}
 
-	blocks := []ContentBlock{
-		{Text: fmt.Sprintf("Profile JSON:\n%s", profileJSON)},
-		{Text: fmt.Sprintf("Target role:\n%s", roleInput)},
-	}
+	blocks := append(
+		[]ContentBlock{{Text: fmt.Sprintf("Profile JSON:\n%s", profileJSON)}},
+		postingBlocks(posting)...,
+	)
 	if extra := opts.instructions(); extra != "" {
 		blocks = append(blocks, ContentBlock{Text: extra})
 	}
@@ -169,5 +188,47 @@ func TailorWithOptions(ctx context.Context, llm LLM, p model.Profile, roleInput 
 		return model.Tailored{}, err
 	}
 
+	if issues := model.ShapeIssues(p, t); len(issues) > 0 {
+		if repaired, err := repairShape(ctx, llm, p, blocks, raw, issues); err == nil {
+			t = repaired
+		} else {
+			// A resume that misses a floor still beats no resume, so a failed
+			// repair keeps the first result rather than failing the request.
+			slog.Warn("tailor shape repair failed", "err", err, "issues", len(issues))
+		}
+	}
+
+	return t, nil
+}
+
+// repairShape asks for one more pass over an output that came back under a
+// content floor, handing back the model's own JSON plus the specific misses.
+// The result goes through the same id guardrail as the first pass.
+func repairShape(
+	ctx context.Context,
+	llm LLM,
+	p model.Profile,
+	blocks []ContentBlock,
+	previous []byte,
+	issues []string,
+) (model.Tailored, error) {
+	repair := append(append([]ContentBlock{}, blocks...),
+		ContentBlock{Text: fmt.Sprintf("Your previous output:\n%s", previous)},
+		ContentBlock{Text: fmt.Sprintf(
+			"That output falls short of the resume standard:\n- %s\n\nReturn the whole resume again, fixing exactly these points and changing nothing else. Every id must still come from the profile.",
+			strings.Join(issues, "\n- "))},
+	)
+
+	raw, err := llm.GenerateJSON(ctx, tailorSystemPrompt, repair, tailoredSchema)
+	if err != nil {
+		return model.Tailored{}, fmt.Errorf("tailor repair: %w", err)
+	}
+	var t model.Tailored
+	if err := json.Unmarshal(raw, &t); err != nil {
+		return model.Tailored{}, fmt.Errorf("tailor repair: unmarshal response: %w", err)
+	}
+	if err := model.ValidateTailored(p, t); err != nil {
+		return model.Tailored{}, fmt.Errorf("tailor repair: %w", err)
+	}
 	return t, nil
 }

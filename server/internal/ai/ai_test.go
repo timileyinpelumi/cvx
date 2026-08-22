@@ -43,7 +43,7 @@ func TestDigitize(t *testing.T) {
 
 // tailoredSample is a minimal valid Tailor response for digitizedSample's
 // profile.
-const tailoredSample = `{"targetRole":"Python Backend Engineer","headline":"h","summary":"s","selectedSkills":["Python"],
+const tailoredSample = `{"targetRole":"Python Backend Engineer","headline":"h","summary":"Backend engineer who builds the services other teams depend on, most of it in Python. Built the computation engine at AE and owned its correctness under load, from the service layer down to the batch jobs that carried production traffic. That is the same ground this role covers, and the reason the fit is close enough to be worth a conversation.","selectedSkills":["Python"],
 	"sections":[{"title":"Experience","items":[{"sourceId":"item-0","title":"Engineer","organization":"AE","dates":"2021 – Present",
 	"bullets":[{"sourceBulletId":"item-0-b-0","text":"Built the engine in Python"}]}]}],
 	"gaps":[{"requirement":"Django","evidence":"not in profile","severity":"missing"}],"whatChanged":["led with Python"]}`
@@ -51,7 +51,7 @@ const tailoredSample = `{"targetRole":"Python Backend Engineer","headline":"h","
 func TestTailorValid(t *testing.T) {
 	p := digitizedSample() // helper reusing TestDigitize fixture
 	f := &fakeLLM{out: tailoredSample}
-	ta, err := Tailor(context.Background(), f, p, "Python Backend Engineer")
+	ta, err := Tailor(context.Background(), f, p, testPosting("Python Backend Engineer"))
 	if err != nil || ta.TargetRole != "Python Backend Engineer" {
 		t.Fatalf("%+v %v", ta, err)
 	}
@@ -61,7 +61,7 @@ func TestTailorCallShape(t *testing.T) {
 	p := digitizedSample()
 	f := &fakeLLM{out: tailoredSample}
 
-	if _, err := Tailor(context.Background(), f, p, "Python Backend Engineer"); err != nil {
+	if _, err := Tailor(context.Background(), f, p, testPosting("Python Backend Engineer")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -70,8 +70,8 @@ func TestTailorCallShape(t *testing.T) {
 	// the verbatim-skills rule that backs the selectedSkillsSubset check.
 	for _, phrase := range []string{
 		"sourceBulletId",
-		"at most 5 items",
-		"2-4 bullets per item",
+		"Select 3 to 5 items",
+		"2 to 4 bullets per item",
 		"Never force-fit",
 		"Anti-stuffing",
 		"copied verbatim from the",
@@ -83,17 +83,20 @@ func TestTailorCallShape(t *testing.T) {
 		}
 	}
 
-	if len(f.blocks) != 2 {
-		t.Fatalf("want 2 blocks (profile JSON + role), got %d", len(f.blocks))
+	if len(f.blocks) != 3 {
+		t.Fatalf("want 3 blocks (profile JSON + structured posting + raw posting), got %d", len(f.blocks))
+	}
+	if !strings.Contains(f.blocks[1].Text, "already read and structured") {
+		t.Fatalf("want the parsed posting in block 2, got %q", f.blocks[1].Text)
 	}
 }
 
 func TestTailorRejectsFabrication(t *testing.T) {
 	p := digitizedSample()
-	f := &fakeLLM{out: `{"targetRole":"X","headline":"h","summary":"s","selectedSkills":[],
+	f := &fakeLLM{out: `{"targetRole":"X","headline":"h","summary":"Backend engineer who builds the services other teams depend on, most of it in Python. Built the computation engine at AE and owned its correctness under load, from the service layer down to the batch jobs that carried production traffic. That is the same ground this role covers, and the reason the fit is close enough to be worth a conversation.","selectedSkills":[],
 		"sections":[{"title":"Experience","items":[{"sourceId":"item-7","title":"CTO","organization":"","dates":"",
 		"bullets":[{"sourceBulletId":"item-7-b-0","text":"Ran everything"}]}]}],"gaps":[],"whatChanged":[]}`}
-	if _, err := Tailor(context.Background(), f, p, "X"); err == nil || !strings.Contains(err.Error(), "item-7") {
+	if _, err := Tailor(context.Background(), f, p, testPosting("X")); err == nil || !strings.Contains(err.Error(), "item-7") {
 		t.Fatalf("want fabrication error, got %v", err)
 	}
 }
@@ -116,18 +119,24 @@ func TestTailorOptionsInstructions(t *testing.T) {
 func TestTailorWithOptionsAppendsBlock(t *testing.T) {
 	p := digitizedSample()
 	f := &fakeLLM{out: tailoredSample}
-	if _, err := TailorWithOptions(context.Background(), f, p, "role", TailorOptions{Tone: "confident"}); err != nil {
+	if _, err := TailorWithOptions(context.Background(), f, p, testPosting("role"), TailorOptions{Tone: "confident"}); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.blocks) != 3 {
-		t.Fatalf("want profile+role+adjustments blocks, got %d", len(f.blocks))
+	if len(f.blocks) != 4 {
+		t.Fatalf("want profile + structured posting + raw posting + adjustments blocks, got %d", len(f.blocks))
 	}
 
 	f2 := &fakeLLM{out: tailoredSample}
-	if _, err := Tailor(context.Background(), f2, p, "role"); err != nil {
+	if _, err := Tailor(context.Background(), f2, p, testPosting("role")); err != nil {
 		t.Fatal(err)
 	}
-	if len(f2.blocks) != 2 {
-		t.Fatalf("default Tailor must send exactly profile+role, got %d", len(f2.blocks))
+	if len(f2.blocks) != 3 {
+		t.Fatalf("default Tailor must send exactly profile + structured posting + raw posting, got %d", len(f2.blocks))
 	}
+}
+
+// testPosting is the fixture stand-in for a parsed posting: usable, titled,
+// and carrying the same text as its raw body.
+func testPosting(text string) model.Posting {
+	return model.Posting{Usable: true, Title: text, Raw: text}
 }

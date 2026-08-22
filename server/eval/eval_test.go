@@ -50,8 +50,8 @@ func validTailoredJSON(nItems int) string {
 			`"bullets":[{"sourceBulletId":"item-`+id+`-b-0","text":"did a thing"},`+
 			`{"sourceBulletId":"item-`+id+`-b-1","text":"did another thing"}]}`)
 	}
-	return `{"targetRole":"Backend Engineer","headline":"Senior Backend Engineer","summary":"A concise, honest summary of the candidate for this role.",` +
-		`"selectedSkills":["Go","PostgreSQL"],` +
+	return `{"targetRole":"Backend Engineer","headline":"Senior Backend Engineer","summary":"Backend engineer who builds and operates the services other teams depend on, with most of that work in Go and Python behind high-traffic APIs. Owned the computation engine that carried every production workload, took its batch processing time down, and kept it correct under load. Comfortable across PostgreSQL, Docker, and the observability work that keeps a distributed system honest, which is the same ground this role covers.",` +
+		`"selectedSkills":["Go","Python","PostgreSQL","Docker","Distributed Systems","Observability"],` +
 		`"sections":[{"title":"Experience","items":[` + strings.Join(items, ",") + `]}],` +
 		`"gaps":[{"requirement":"Kubernetes at scale","evidence":"only single-cluster experience","severity":"weak"}],` +
 		`"whatChanged":["led with backend depth"]}`
@@ -77,7 +77,7 @@ func TestRunHappyPath(t *testing.T) {
 	gen := &queueLLM{outs: []string{validTailoredJSON(3)}}
 	judge := &queueLLM{outs: []string{validResumeRubricJSON}}
 
-	report, err := Run(context.Background(), gen, judge, "fixtures", []string{"backend-go"}, false)
+	report, err := Run(context.Background(), gen, judge, "fixtures", []string{"backend-go"}, RunOptions{CoverLetters: false})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestRunDetectsItemCountViolation(t *testing.T) {
 	gen := &queueLLM{outs: []string{validTailoredJSON(6)}}
 	judge := &queueLLM{outs: []string{validResumeRubricJSON}}
 
-	report, err := Run(context.Background(), gen, judge, "fixtures", []string{"backend-go"}, false)
+	report, err := Run(context.Background(), gen, judge, "fixtures", []string{"backend-go"}, RunOptions{CoverLetters: false})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestRunGuardrailFailureSkipsJudge(t *testing.T) {
 	gen := &queueLLM{outs: []string{fabricated}}
 	judge := &queueLLM{outs: []string{validResumeRubricJSON}} // must never be consumed
 
-	report, err := Run(context.Background(), gen, judge, "fixtures", []string{"backend-go"}, false)
+	report, err := Run(context.Background(), gen, judge, "fixtures", []string{"backend-go"}, RunOptions{CoverLetters: false})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestRunGenerationErrorIsNotGuardrail(t *testing.T) {
 	gen := &erroringLLM{err: errors.New("network unreachable")}
 	judge := &queueLLM{outs: []string{validResumeRubricJSON}} // must never be consumed
 
-	report, err := Run(context.Background(), gen, judge, "fixtures", []string{"backend-go"}, false)
+	report, err := Run(context.Background(), gen, judge, "fixtures", []string{"backend-go"}, RunOptions{CoverLetters: false})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -196,10 +196,10 @@ func TestRunGenerationErrorIsNotGuardrail(t *testing.T) {
 }
 
 func TestRunWithCoverLetters(t *testing.T) {
-	gen := &queueLLM{outs: []string{validTailoredJSON(2), validCoverLetterJSON}}
+	gen := &queueLLM{outs: []string{validTailoredJSON(3), validCoverLetterJSON}}
 	judge := &queueLLM{outs: []string{validResumeRubricJSON, validCoverRubricJSON}}
 
-	report, err := Run(context.Background(), gen, judge, "fixtures", []string{"backend-go"}, true)
+	report, err := Run(context.Background(), gen, judge, "fixtures", []string{"backend-go"}, RunOptions{CoverLetters: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestIsGuardrailError(t *testing.T) {
 func TestRunUnknownFixtureID(t *testing.T) {
 	gen := &queueLLM{}
 	judge := &queueLLM{}
-	if _, err := Run(context.Background(), gen, judge, "fixtures", []string{"nonexistent"}, false); err == nil || !strings.Contains(err.Error(), "nonexistent") {
+	if _, err := Run(context.Background(), gen, judge, "fixtures", []string{"nonexistent"}, RunOptions{CoverLetters: false}); err == nil || !strings.Contains(err.Error(), "nonexistent") {
 		t.Fatalf("want error naming unknown id, got %v", err)
 	}
 }
@@ -235,10 +235,10 @@ func TestRunUnknownFixtureID(t *testing.T) {
 func TestRunSequentialOrder(t *testing.T) {
 	// Two fixtures, no cover letters: gen/judge should each be called
 	// exactly twice, once per fixture, strictly in sequence.
-	gen := &queueLLM{outs: []string{validTailoredJSON(1), validTailoredJSON(1)}}
+	gen := &queueLLM{outs: []string{validTailoredJSON(3), validTailoredJSON(3)}}
 	judge := &queueLLM{outs: []string{validResumeRubricJSON, validResumeRubricJSON}}
 
-	report, err := Run(context.Background(), gen, judge, "fixtures", []string{"backend-go", "backend-python"}, false)
+	report, err := Run(context.Background(), gen, judge, "fixtures", []string{"backend-go", "backend-python"}, RunOptions{CoverLetters: false})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -322,16 +322,27 @@ func TestSummaryCheckEmptyFails(t *testing.T) {
 	}
 }
 
-func TestSummaryCheckTooLongFails(t *testing.T) {
+func TestSummaryCheckTooShortFails(t *testing.T) {
 	tr := baseTailored()
-	words := make([]string, 61)
+	words := make([]string, model.MinSummaryWords-1)
 	for i := range words {
 		words[i] = "word"
 	}
 	tr.Summary = strings.Join(words, " ")
-	c := summaryCheck(tr)
-	if c.Pass {
-		t.Fatal("want fail for 61-word summary")
+	if c := summaryCheck(tr); c.Pass {
+		t.Fatalf("want fail for %d-word summary", len(words))
+	}
+}
+
+func TestSummaryCheckTooLongFails(t *testing.T) {
+	tr := baseTailored()
+	words := make([]string, model.MaxSummaryWords+1)
+	for i := range words {
+		words[i] = "word"
+	}
+	tr.Summary = strings.Join(words, " ")
+	if c := summaryCheck(tr); c.Pass {
+		t.Fatalf("want fail for %d-word summary", len(words))
 	}
 }
 
@@ -382,5 +393,23 @@ func TestSelectedSkillsCheckNotInProfileFails(t *testing.T) {
 	}
 	if !strings.Contains(c.Detail, "Rust") {
 		t.Fatalf("want detail to name Rust, got %q", c.Detail)
+	}
+}
+
+func TestVoiceCheckCatchesNarratorSummary(t *testing.T) {
+	p := model.Profile{Name: "Ada Lovelace"}
+	tr := baseTailored()
+	tr.Summary = "Ada builds analytical engines. She wrote the first published algorithm and owns the engine's correctness under load."
+	if c := voiceCheck(p, tr); c.Pass {
+		t.Fatal("want fail for a summary written about the candidate")
+	}
+}
+
+func TestVoiceCheckPassesImpliedFirstPerson(t *testing.T) {
+	p := model.Profile{Name: "Ada Lovelace"}
+	tr := baseTailored()
+	tr.Summary = "Mathematician and engineer who builds analytical engines, with the first published algorithm to the name and ownership of the engine's correctness under load."
+	if c := voiceCheck(p, tr); !c.Pass {
+		t.Fatalf("clean summary flagged: %s", c.Detail)
 	}
 }

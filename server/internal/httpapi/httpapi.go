@@ -49,7 +49,7 @@ type Server struct {
 	Mail  func(to string, t model.Tailored, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error)
 	// RecruiterMail sends the forwardable recruiter-facing email instead of
 	// the private notification when a generation requests it.
-	RecruiterMail func(to, subject string, paragraphs []string, closing string, name string, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error)
+	RecruiterMail func(to string, re model.RecruiterEmail, name string, pdf []byte, filename string, coverPDF []byte, coverFilename string) (bool, error)
 	Auth          *auth.Auth
 }
 
@@ -85,6 +85,9 @@ func (s *Server) Register(e *echo.Echo) {
 	api.GET("/settings/preview", s.getSettingsPreview)
 	api.DELETE("/generations/:id", s.deleteGeneration)
 	api.GET("/generations/:id/tailored", s.getGenerationTailored)
+	api.GET("/generations/:id/provenance", s.getGenerationProvenance)
+	api.POST("/generations/:id/bullet", s.rewriteBullet)
+	api.POST("/generations/:id/followup", s.generateFollowUp)
 	api.PUT("/generations/:id", s.putGeneration)
 	api.PUT("/generations/:id/pin", s.putGenerationPin)
 	api.PUT("/generations/:id/status", s.putGenerationStatus)
@@ -106,14 +109,15 @@ func errJSON(c echo.Context, status int, msg string) error {
 	return c.JSON(status, map[string]string{"error": msg})
 }
 
-// deleteAccount wipes the signed-in user and all their data, then ends the
-// session. There is no undo.
+// deleteAccount closes the signed-in account and ends the session. The
+// account row is tombstoned, not removed, so signing in again with the same
+// identity starts a fresh account.
 func (s *Server) deleteAccount(c echo.Context) error {
 	userID, ok := auth.UserIDFromContext(c)
 	if !ok {
 		return errJSON(c, http.StatusUnauthorized, "unauthorized")
 	}
-	if err := s.Store.DeleteUser(userID); err != nil {
+	if err := s.Store.SoftDeleteUser(userID); err != nil {
 		slog.Error("delete account failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
@@ -378,14 +382,17 @@ type generateRequest struct {
 }
 
 type generateResponse struct {
-	ID             string      `json:"id"`
-	Filename       string      `json:"filename"`
-	Gaps           []model.Gap `json:"gaps"`
-	WhatChanged    []string    `json:"whatChanged"`
-	Emailed        bool        `json:"emailed"`
-	CoverFilename  string      `json:"coverFilename"`
-	CoverLetter    bool        `json:"coverLetter"`
-	RecruiterEmail bool        `json:"recruiterEmail"`
+	ID             string             `json:"id"`
+	Filename       string             `json:"filename"`
+	Gaps           []model.Gap        `json:"gaps"`
+	WhatChanged    []string           `json:"whatChanged"`
+	Emailed        bool               `json:"emailed"`
+	CoverFilename  string             `json:"coverFilename"`
+	CoverLetter    bool               `json:"coverLetter"`
+	RecruiterEmail bool               `json:"recruiterEmail"`
+	Fit            *model.Fit         `json:"fit,omitempty"`
+	Coverage       *model.Coverage    `json:"coverage,omitempty"`
+	ProseWarnings  []model.Ungrounded `json:"proseWarnings,omitempty"`
 }
 
 func (s *Server) postGenerate(c echo.Context) error {
@@ -426,16 +433,17 @@ func (s *Server) postGenerate(c echo.Context) error {
 		return errJSON(c, http.StatusConflict, "no profile")
 	}
 
-	if err := ai.ClassifyJobInput(ctx, s.LLM, req.RoleInput); err != nil {
+	posting, err := ai.ParsePosting(ctx, s.LLM, req.RoleInput)
+	if err != nil {
 		if errors.Is(err, ai.ErrNotJobInput) {
 			slog.Info("job input rejected", "err", err)
 			return errJSON(c, http.StatusUnprocessableEntity, msgNotJobInput)
 		}
-		slog.Error("classify job input failed", "err", err)
+		slog.Error("parse posting failed", "err", err)
 		return errJSON(c, http.StatusBadGateway, err.Error())
 	}
 
-	tailored, err := ai.TailorWithOptions(ctx, s.LLM, *p, req.RoleInput, s.loadGenerationParams(userID).options())
+	tailored, err := ai.TailorWithOptions(ctx, s.LLM, *p, posting, s.loadGenerationParams(userID).options())
 	if err != nil {
 		slog.Error("tailor failed", "err", err)
 		return errJSON(c, http.StatusBadGateway, err.Error())
@@ -446,6 +454,15 @@ func (s *Server) postGenerate(c echo.Context) error {
 
 	style := s.loadStyle(userID)
 	pdf, err := pdfgen.Render(*p, tailored, style)
+	if err == nil {
+		// Read our own output back with the extractor an ATS would use. A
+		// failure here means the page does not say what the pipeline thinks
+		// it says, which is a rendering bug, not a reason to withhold the
+		// resume — so it is logged loudly and the download still happens.
+		if issues := pdfgen.Verify(pdf, *p, tailored); len(issues) > 0 {
+			slog.Error("rendered resume failed verification", "issues", issues)
+		}
+	}
 	if err != nil {
 		slog.Error("render failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
@@ -459,18 +476,27 @@ func (s *Server) postGenerate(c echo.Context) error {
 	// response reports coverLetter=false.
 	var coverPDF []byte
 	var coverFilename string
+	// prose collects the free-text artifacts for the grounding audit below,
+	// keyed by the label a warning names.
+	prose := map[string]string{}
 	if req.CoverLetter {
-		if cl, err := ai.CoverLetter(ctx, s.LLM, *p, req.RoleInput); err != nil {
+		if cl, err := ai.CoverLetter(ctx, s.LLM, *p, posting); err != nil {
 			slog.Error("cover letter failed", "err", err)
 		} else if rendered, err := pdfgen.RenderCoverLetter(*p, tailored.TargetRole, cl, style); err != nil {
 			slog.Error("cover letter failed", "err", err)
 		} else {
 			coverPDF = rendered
 			coverFilename = model.CoverFilename(p.Name, tailored.TargetRole, fileID)
+			prose[ai.ArtifactCoverLetter] = strings.Join(cl.Paragraphs, "\n\n")
 		}
 	}
 
 	meta, err := s.Store.SaveGeneration(userID, tailored, pdf, filename, coverPDF, coverFilename, fingerprint)
+	if err == nil {
+		if err := s.Store.SavePosting(userID, meta.ID, posting); err != nil {
+			slog.Warn("save posting failed", "err", err, "id", meta.ID)
+		}
+	}
 	if err != nil {
 		slog.Error("save generation failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())
@@ -488,11 +514,12 @@ func (s *Server) postGenerate(c echo.Context) error {
 					// The user asked for the forwardable artifact: a failed
 					// generation sends nothing rather than falling back to
 					// the private notification.
-					re, err := ai.RecruiterEmail(ctx, s.LLM, *p, req.RoleInput)
+					re, err := ai.RecruiterEmail(ctx, s.LLM, *p, posting)
 					if err != nil {
 						slog.Error("recruiter email failed", "err", err)
 					} else {
-						ok, err := s.RecruiterMail(u.Email, re.Subject, re.Paragraphs, re.Closing, p.Name, pdf, filename, coverPDF, coverFilename)
+						prose[ai.ArtifactEmail] = re.Subject + "\n\n" + strings.Join(re.Paragraphs, "\n\n")
+						ok, err := s.RecruiterMail(u.Email, re, p.Name, pdf, filename, coverPDF, coverFilename)
 						if err != nil {
 							slog.Warn("email send failed", "err", err)
 						}
@@ -520,6 +547,22 @@ func (s *Server) postGenerate(c echo.Context) error {
 		}
 	}
 
+	// Advisory grounding audit over the free prose. The resume is guarded by
+	// ids; these two are not, so they get checked against the profile before
+	// the user forwards them anywhere.
+	var proseWarnings []model.Ungrounded
+	if len(prose) > 0 {
+		if found, err := ai.AuditGrounding(ctx, s.LLM, *p, prose); err != nil {
+			slog.Warn("grounding audit failed", "err", err)
+		} else if len(found) > 0 {
+			slog.Warn("generated prose has unsupported claims", "count", len(found))
+			proseWarnings = found
+		}
+	}
+
+	coverage := model.CoverageOf(posting, tailored)
+	fit := model.FitOf(posting, tailored, coverage)
+
 	return c.JSON(http.StatusOK, generateResponse{
 		ID:             meta.ID,
 		Filename:       meta.Filename,
@@ -529,6 +572,9 @@ func (s *Server) postGenerate(c echo.Context) error {
 		CoverFilename:  coverFilename,
 		CoverLetter:    coverFilename != "",
 		RecruiterEmail: recruiterSent,
+		Fit:            &fit,
+		Coverage:       &coverage,
+		ProseWarnings:  proseWarnings,
 	})
 }
 
@@ -546,6 +592,193 @@ func (s *Server) getGenerationTailored(c echo.Context) error {
 		return errJSON(c, http.StatusNotFound, "no such generation")
 	}
 	return c.JSON(http.StatusOK, t)
+}
+
+// provenanceEntry is where one line on the resume came from: the profile
+// bullet it cites, and the item that bullet belongs to.
+type provenanceEntry struct {
+	Original     string `json:"original"`
+	ItemTitle    string `json:"itemTitle"`
+	Organization string `json:"organization"`
+}
+
+// getGenerationProvenance returns, per cited profile bullet id, the original
+// wording from the profile. The tailored output already carries the ids; the
+// guardrail already refuses anything else. This is what makes that visible:
+// the user can see every line on the page traced back to something they
+// wrote, which is the whole basis for trusting the output.
+func (s *Server) getGenerationProvenance(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	p, err := s.Store.LoadProfile(userID)
+	if err != nil {
+		slog.Error("load profile failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if p == nil {
+		return errJSON(c, http.StatusConflict, "no profile")
+	}
+	t, found, err := s.Store.GetGenerationTailored(userID, c.Param("id"))
+	if err != nil {
+		slog.Error("load generation failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if !found {
+		return errJSON(c, http.StatusNotFound, "no such generation")
+	}
+
+	cited := map[string]bool{}
+	for _, sec := range t.Sections {
+		for _, it := range sec.Items {
+			for _, b := range it.Bullets {
+				cited[b.SourceBulletID] = true
+			}
+		}
+	}
+
+	out := map[string]provenanceEntry{}
+	for _, item := range p.Items {
+		for _, b := range item.Bullets {
+			if cited[b.ID] {
+				out[b.ID] = provenanceEntry{
+					Original:     b.Text,
+					ItemTitle:    item.Title,
+					Organization: item.Organization,
+				}
+			}
+		}
+	}
+	return c.JSON(http.StatusOK, out)
+}
+
+// followUpAfterDays is how long an application waits before a nudge is
+// reasonable. Under a week is pushy; a month is too late to be useful.
+const followUpAfterDays = 7
+
+// generateFollowUp drafts the nudge for an application that has gone quiet.
+// It refuses on anything not actually sent, and on anything sent too
+// recently, because the tracker exists to tell the user when to follow up,
+// not to let them do it on day one.
+func (s *Server) generateFollowUp(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	p, err := s.Store.LoadProfile(userID)
+	if err != nil {
+		slog.Error("load profile failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if p == nil {
+		return errJSON(c, http.StatusConflict, "no profile")
+	}
+
+	id := c.Param("id")
+	list, err := s.Store.ListGenerations(userID)
+	if err != nil {
+		slog.Error("list generations failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	var meta *store.GenerationMeta
+	for i := range list {
+		if list[i].ID == id {
+			meta = &list[i]
+		}
+	}
+	if meta == nil {
+		return errJSON(c, http.StatusNotFound, "no such generation")
+	}
+	if meta.Status != store.StatusSent {
+		return errJSON(c, http.StatusConflict, "only an application marked sent can be followed up")
+	}
+
+	days := daysSince(meta.StatusAt)
+	if days < followUpAfterDays {
+		return errJSON(c, http.StatusConflict, "too soon to follow up")
+	}
+
+	posting := model.Posting{Title: meta.TargetRole, Raw: meta.TargetRole}
+	if stored, err := s.Store.GetPosting(userID, id); err != nil {
+		slog.Warn("load posting failed", "err", err)
+	} else if stored != nil {
+		posting = *stored
+	}
+
+	re, err := ai.FollowUp(c.Request().Context(), s.LLM, *p, posting, days)
+	if err != nil {
+		slog.Error("follow up failed", "err", err)
+		return errJSON(c, http.StatusBadGateway, err.Error())
+	}
+	return c.JSON(http.StatusOK, re)
+}
+
+// daysSince returns whole days between an RFC3339 stamp and now, or 0 when
+// the stamp is missing or unparseable.
+func daysSince(stamp string) int {
+	t, err := time.Parse(time.RFC3339, stamp)
+	if err != nil {
+		return 0
+	}
+	return int(time.Since(t).Hours() / 24)
+}
+
+type rewriteBulletRequest struct {
+	BulletID    string `json:"bulletId"`
+	Current     string `json:"current"`
+	Instruction string `json:"instruction"`
+}
+
+// rewriteBullet regenerates one line without re-rolling the resume. The
+// profile bullet it cites is the ground truth and is looked up here rather
+// than trusted from the request, so a rewrite can never be pointed at
+// something the user did not write.
+func (s *Server) rewriteBullet(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return errJSON(c, http.StatusUnauthorized, "unauthorized")
+	}
+	var req rewriteBulletRequest
+	if err := c.Bind(&req); err != nil {
+		return errJSON(c, http.StatusBadRequest, "bad request")
+	}
+
+	p, err := s.Store.LoadProfile(userID)
+	if err != nil {
+		slog.Error("load profile failed", "err", err)
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+	if p == nil {
+		return errJSON(c, http.StatusConflict, "no profile")
+	}
+
+	var source model.Bullet
+	var itemTitle, organization string
+	for _, item := range p.Items {
+		for _, b := range item.Bullets {
+			if b.ID == req.BulletID {
+				source, itemTitle, organization = b, item.Title, item.Organization
+			}
+		}
+	}
+	if source.ID == "" {
+		return errJSON(c, http.StatusNotFound, "no such profile bullet")
+	}
+
+	posting := model.Posting{}
+	if stored, err := s.Store.GetPosting(userID, c.Param("id")); err != nil {
+		slog.Warn("load posting failed", "err", err)
+	} else if stored != nil {
+		posting = *stored
+	}
+
+	text, err := ai.RewriteBullet(c.Request().Context(), s.LLM, source, itemTitle, organization, posting, req.Current, req.Instruction)
+	if err != nil {
+		slog.Error("rewrite bullet failed", "err", err)
+		return errJSON(c, http.StatusBadGateway, err.Error())
+	}
+	return c.JSON(http.StatusOK, map[string]string{"text": text})
 }
 
 // putGeneration applies the user's edits to a generation: the content is
@@ -575,6 +808,11 @@ func (s *Server) putGeneration(c echo.Context) error {
 	model.NormalizeTailored(&t)
 
 	pdf, err := pdfgen.Render(*p, t, s.loadStyle(userID))
+	if err == nil {
+		if issues := pdfgen.Verify(pdf, *p, t); len(issues) > 0 {
+			slog.Error("edited resume failed verification", "issues", issues)
+		}
+	}
 	if err != nil {
 		slog.Error("render failed", "err", err)
 		return errJSON(c, http.StatusInternalServerError, err.Error())

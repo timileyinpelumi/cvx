@@ -3,6 +3,7 @@ package ai
 import (
 	"bytes"
 	"context"
+	"cvx/internal/pdftext"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -102,7 +103,7 @@ func (c *openAICompat) GenerateJSON(ctx context.Context, system string, blocks [
 					},
 				})
 			} else {
-				text, err := ExtractText(b.PDF)
+				text, err := pdftext.ExtractText(b.PDF)
 				if err != nil {
 					return nil, fmt.Errorf("openaicompat: %w", err)
 				}
