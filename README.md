@@ -8,14 +8,12 @@ Live at [cvx.timileyin.dev](https://cvx.timileyin.dev).
 
 ## The idea
 
-Most resume tools write you a new resume. cvx doesn't. You give it your
-history once, and from then on every resume is chosen and reworded from that
-one record — never invented.
+You give cvx your history once. Every resume after that is chosen and reworded
+from that one record.
 
-That constraint is enforced in code, not asked for in a prompt. Every line on
-the page has to cite the profile entry it came from, or the generation is
-rejected. So a resume can say the same thing in the job's own words, and it
-cannot say you did something you didn't.
+Code enforces this. Every line on the page has to cite the profile entry it
+came from, or the generation is rejected. A resume can use the job's own words,
+and it can't claim something you didn't do.
 
 ## What it does
 
@@ -25,9 +23,8 @@ things it can't work out for itself — dates, and what actually changed
 because of your work.
 
 **Tailors a resume per job.** Paste the ad. It picks what fits, orders it by
-relevance, writes a summary and headline in the job's vocabulary, and fits it
-to exactly one page — it selects more than fits, then trims from the weakest
-end.
+relevance, and writes a summary and headline in the job's vocabulary. To fit
+exactly one page, it selects more than fits and trims from the weakest end.
 
 **Tells you where you stand.** A fit score, the requirements you're missing,
 and which of the technologies the ad names appear on your page.
@@ -52,14 +49,13 @@ came from.
 Needs Docker and a [Groq](https://console.groq.com) API key.
 
 ```
-git clone https://github.com/timileyindev/cvx && cd cvx
+git clone https://github.com/timileyinpelumi/cvx && cd cvx
 cp .env.example .env      # fill in the key and a session secret
 docker compose up -d --build
 ```
 
 The whole app is one container: a Go API and a Next.js frontend behind one
-port, with SQLite on a disk beside them. That's deliberate — no managed
-database, no second service, and a backup is one file.
+port, with SQLite on a disk beside them. A backup is one file.
 
 For development, `cd server && go run ./cmd/cvx` and `cd web && bun run dev`.
 
