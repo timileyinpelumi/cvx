@@ -4,8 +4,6 @@
 
 Paste a job ad, get a one page resume aimed at it.
 
-Live at [cvx.timileyin.dev](https://cvx.timileyin.dev).
-
 ## The idea
 
 You give cvx your history once. Every resume after that is chosen and reworded
